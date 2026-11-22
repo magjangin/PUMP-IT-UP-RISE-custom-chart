@@ -1,0 +1,31 @@
+# 디컴파일 / IL2CPP 덤프 / 바이너리 분석 산출물 (개인 PC 전용, 공유 금지)
+il2cpp_dump/
+src_dummy/
+slices/
+logs/
+.reatool/
+input/
+
+# .NET / C# 빌드 산출물
+**/bin/
+**/obj/
+*.dll
+*.pdb
+*.exe
+*.deps.json
+*.nupkg
+
+# IDE & OS
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.cache
+.DS_Store
+Thumbs.db
+
+# 로컬 임시/로그 파일
+*.log
+*.jsonl
+*.tmp
