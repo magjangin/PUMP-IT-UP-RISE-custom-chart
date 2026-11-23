@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using HarmonyLib;
 using Il2Cpp;
 using MelonLoader.Utils;
@@ -72,7 +73,7 @@ namespace PIURiseCustom
 
             if (SaveCustomConfig.NoteSpeedChaosPerLane)
             {
-                int lane = Mathf.Clamp(note.Split, 0, _laneChaosMult.Length - 1);
+                int lane = Math.Clamp(note.Split, 0, _laneChaosMult.Length - 1);
                 return _laneChaosMult[lane];
             }
 
@@ -82,7 +83,7 @@ namespace PIURiseCustom
                 // 결정론적 해시로 노트별 배율 배정
                 uint h = (uint)(id * 2654435761u);
                 float t = (h & 0xFFFF) / 65535f;
-                mult = Mathf.Lerp(SaveCustomConfig.NoteSpeedChaosMin, SaveCustomConfig.NoteSpeedChaosMax, t);
+                mult = SaveCustomConfig.NoteSpeedChaosMin + (SaveCustomConfig.NoteSpeedChaosMax - SaveCustomConfig.NoteSpeedChaosMin) * t;
                 _noteChaosMult[id] = mult;
             }
             return mult;
@@ -185,29 +186,107 @@ namespace PIURiseCustom
             }
         }
 
-        // NoteSway / NoteSpeedChaos / Sudden / Hidden / FadeIn / FadeOut / CustomNotes (일반 노트)
-        [HarmonyPatch(typeof(SpliteScript), "LateUpdate")]
-        internal static class SpliteScript_LateUpdate_Visual_Patch
+        // NoteSway / NoteSpeedChaos / Sudden / Hidden / FadeIn / FadeOut / CustomNotes (일반 노트·롱노트)
+        // ★ 매 프레임 × 화면의 모든 노트마다 불리는 경로라, 비주얼 기능이 하나도 켜져 있지 않으면 훅 자체를 걸지 않는다(v0.3.3).
+        //   IL2CPP Harmony 훅은 본문이 바로 return해도 호출마다 트램펄린·인자 마샬링 비용이 든다.
+        //   → [HarmonyPatch] 속성 없이 SyncLateUpdateHooks가 MainStage.Start(config 핫리로드 직후)마다 붙이거나 뗀다.
+        internal static class LateUpdateHooks
         {
-            private static void Postfix(SpliteScript __instance)
+            private static void ShortPostfix(SpliteScript __instance) => ApplyVisuals(__instance, null);
+            private static void LongPostfix(LongSpliteScript __instance) => ApplyVisuals(__instance, __instance);
+
+            private static bool _attached;
+            private static bool _resolveFailed;
+            private static MethodInfo _shortTarget, _longTarget, _shortPatch, _longPatch;
+
+            internal static bool Attached => _attached;
+
+            internal static bool AnyFeatureEnabled()
             {
-                ApplyVisuals(__instance, null);
+                return SaveCustomConfig.NoteSway
+                    || SaveCustomConfig.NoteSpeedChaos
+                    || SaveCustomConfig.Sudden > 0.01f || SaveCustomConfig.Hidden > 0.01f
+                    || SaveCustomConfig.FadeIn || SaveCustomConfig.FadeOut
+                    || SaveCustomConfig.CustomNotes
+                    || SaveCustomConfig.LaneCoverDebug;
+            }
+
+            internal static void Sync(HarmonyLib.Harmony harmony)
+            {
+                if (harmony == null || _resolveFailed)
+                    return;
+
+                bool want = AnyFeatureEnabled();
+                if (want == _attached)
+                    return;
+
+                try
+                {
+                    if (_shortTarget == null)
+                    {
+                        // LongSpliteScript는 LateUpdate를 오버라이드하므로 각자 선언한 메서드를 정확히 집는다
+                        _shortTarget = AccessTools.DeclaredMethod(typeof(SpliteScript), "LateUpdate");
+                        _longTarget = AccessTools.DeclaredMethod(typeof(LongSpliteScript), "LateUpdate");
+                        _shortPatch = AccessTools.Method(typeof(LateUpdateHooks), nameof(ShortPostfix));
+                        _longPatch = AccessTools.Method(typeof(LateUpdateHooks), nameof(LongPostfix));
+                        if (_shortTarget == null)
+                        {
+                            _resolveFailed = true;
+                            Mod.Log.Warning("[NoteVisual] SpliteScript.LateUpdate를 찾지 못해 노트 비주얼 기능(흔들림·카오스·서든/히든·페이드·커스텀 노트 갱신)을 끕니다 — 게임 업데이트 확인 필요");
+                            return;
+                        }
+                        if (_longTarget == null)
+                            Mod.Log.Warning("[NoteVisual] LongSpliteScript.LateUpdate를 찾지 못해 롱노트에는 비주얼 기능이 적용되지 않습니다");
+                    }
+
+                    if (want)
+                    {
+                        harmony.Patch(_shortTarget, postfix: new HarmonyMethod(_shortPatch));
+                        if (_longTarget != null)
+                            harmony.Patch(_longTarget, postfix: new HarmonyMethod(_longPatch));
+                        _attached = true;
+                        Mod.Log.Msg("[NoteVisual] 노트 비주얼 기능이 켜져 있어 LateUpdate 훅을 붙였습니다");
+                    }
+                    else
+                    {
+                        harmony.Unpatch(_shortTarget, _shortPatch);
+                        if (_longTarget != null)
+                            harmony.Unpatch(_longTarget, _longPatch);
+                        _attached = false;
+                        Mod.Log.Msg("[NoteVisual] 노트 비주얼 기능이 모두 꺼져 LateUpdate 훅을 뗐습니다");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // 붙이다 실패하면 반복 시도로 로그가 쌓이지 않게 이번 실행에서는 포기한다(나머지 기능은 영향 없음)
+                    _resolveFailed = true;
+                    Mod.Log.Warning($"[NoteVisual] LateUpdate 훅 {(want ? "부착" : "해제")} 실패 — 노트 비주얼 기능 비활성: {ex.GetType().Name}: {ex.Message}");
+                }
             }
         }
 
-        // 롱노트(LongSpliteScript)는 LateUpdate를 오버라이드하므로 별도 패치로 동일 비주얼 적용
-        [HarmonyPatch(typeof(LongSpliteScript), "LateUpdate")]
-        internal static class LongSpliteScript_LateUpdate_Visual_Patch
+        // 매 프레임 한 번만 읽으면 되는 Unity 값(Time.time, Camera.main, Screen.height). 노트마다 다시 읽으면 노트 수만큼 IL2CPP 호출이 난다.
+        private static int _frameCacheIndex = -1;
+        private static float _frameTime;
+        private static Camera _frameCam;
+        private static int _frameScreenH;
+
+        private static void RefreshFrameCache()
         {
-            private static void Postfix(LongSpliteScript __instance)
-            {
-                ApplyVisuals(__instance, __instance);
-            }
+            int frame = Mod.FrameIndex;
+            if (frame == _frameCacheIndex)
+                return;
+            _frameCacheIndex = frame;
+            _frameTime = Time.time;
+            _frameCam = Camera.main;
+            _frameScreenH = Screen.height;
         }
+
+        private static float Clamp01(float v) => v < 0f ? 0f : (v > 1f ? 1f : v);
 
         private static void ApplyVisuals(SpliteScript note, LongSpliteScript longNote)
         {
-            if (note == null)
+            if (note is null)
                 return;
 
             bool needSway = SaveCustomConfig.NoteSway;
@@ -228,13 +307,17 @@ namespace PIURiseCustom
                     return;
 
                 var playBase = note._playBase ?? GameplayOptionPatches.ActivePlayBase;
+                RefreshFrameCache();
                 var tr = note.transform;
                 var parentLine = note.pParentLine;
                 int id = note.GetInstanceID();
 
                 // 원본 로컬 X/Y 기록 (프레임 누적 폭주 방지용)
                 Vector3 lp = tr.localPosition;
-                IntPtr parentPtr = parentLine != null ? parentLine.Pointer : IntPtr.Zero;
+                // Unity 객체 null 비교(op_Inequality)는 IL2CPP 호출이라 노트당 한 번만 한다
+                bool hasParent = parentLine != null;
+                bool hasPlayBase = playBase != null;
+                IntPtr parentPtr = hasParent ? parentLine.Pointer : IntPtr.Zero;
                 if (!_noteBase.TryGetValue(id, out NoteBase nb) || nb.Parent != parentPtr || nb.Split != note.Split)
                 {
                     nb = new NoteBase { X = lp.x, Y = lp.y, Parent = parentPtr, Split = note.Split };
@@ -244,8 +327,8 @@ namespace PIURiseCustom
                 float origY = nb.Y;
 
                 // 판정선 월드 Y 추정 (ArrowMaker 또는 PlayBase.ARROW_Y)
-                float judgeWorldY = playBase != null ? playBase.ARROW_Y : 0f;
-                if (parentLine != null && parentLine.TargetArrow != null)
+                float judgeWorldY = hasPlayBase ? playBase.ARROW_Y : 0f;
+                if (hasParent && parentLine.TargetArrow != null)
                     judgeWorldY = parentLine.TargetArrow.transform.position.y;
 
                 // 1. NoteSway (좌우 흔들림, 판정 무관)
@@ -253,14 +336,14 @@ namespace PIURiseCustom
                 {
                     float ampWorld = SaveCustomConfig.NoteSwayAmplitude / 100f; // PPU = 100
                     float phase = (id * 0.37f) + (note.Split * 0.9f);
-                    float wave = Mathf.Sin(Time.time * SaveCustomConfig.NoteSwaySpeed * Mathf.PI * 2f + phase);
+                    float wave = MathF.Sin(_frameTime * SaveCustomConfig.NoteSwaySpeed * MathF.PI * 2f + phase);
 
                     float damp = 1f;
-                    if (SaveCustomConfig.NoteSwayDamping && parentLine != null && playBase != null && playBase._player != null)
+                    if (SaveCustomConfig.NoteSwayDamping && hasParent && hasPlayBase && playBase._player != null)
                     {
                         float remainSec = (parentLine._judgeTime - playBase._player.msCurTime) / 1000f;
                         if (remainSec < SaveCustomConfig.NoteSwayDampingTime)
-                            damp = Mathf.Clamp01(remainSec / SaveCustomConfig.NoteSwayDampingTime);
+                            damp = Clamp01(remainSec / SaveCustomConfig.NoteSwayDampingTime);
                     }
 
                     lp.x = origX + wave * ampWorld * damp;
@@ -284,22 +367,25 @@ namespace PIURiseCustom
                 // 3. Sudden / Hidden / FadeIn / FadeOut 알파 계산
                 if (needCover || needFade || SaveCustomConfig.LaneCoverDebug)
                 {
-                    var cam = Camera.main;
-                    if (cam != null)
+                    var cam = _frameCam;
+                    if (cam is not null)
                     {
                         Vector3 wp = tr.position;
                         Vector3 noteScreen = cam.WorldToScreenPoint(wp);
-                        Vector3 judgeScreen = cam.WorldToScreenPoint(new Vector3(wp.x, judgeWorldY, wp.z));
+                        Vector3 judgeWp = wp;
+                        judgeWp.y = judgeWorldY;
+                        Vector3 judgeScreen = cam.WorldToScreenPoint(judgeWp);
+                        int screenH = _frameScreenH;
 
-                        // GUI 좌표계(상단=0, 하단=Screen.height)로 변환
-                        float judgeGuiY = Screen.height - judgeScreen.y;
-                        float noteGuiY = Screen.height - noteScreen.y;
+                        // GUI 좌표계(상단=0, 하단=screenH)로 변환
+                        float judgeGuiY = screenH - judgeScreen.y;
+                        float noteGuiY = screenH - noteScreen.y;
 
                         // 스크롤 방향 판정: 판정선이 화면 상단 절반에 있으면 아래→위 스크롤
-                        bool scrollUp = judgeGuiY < Screen.height * 0.5f;
+                        bool scrollUp = judgeGuiY < screenH * 0.5f;
                         float laneHeightPx = scrollUp
-                            ? Mathf.Max(200f, Screen.height - judgeGuiY)
-                            : Mathf.Max(200f, judgeGuiY);
+                            ? MathF.Max(200f, screenH - judgeGuiY)
+                            : MathF.Max(200f, judgeGuiY);
 
                         LastJudgeScreenY = judgeGuiY;
                         LastLaneScreenHeight = laneHeightPx;
@@ -318,8 +404,8 @@ namespace PIURiseCustom
                             float suddenEdge = 1f - (SaveCustomConfig.Sudden / 100f);
                             float aSudden = softU <= 0.0001f
                                 ? (u > suddenEdge ? 0f : 1f)
-                                : 1f - Mathf.Clamp01((u - (suddenEdge - softU * 0.5f)) / softU);
-                            alpha = Mathf.Min(alpha, aSudden);
+                                : 1f - Clamp01((u - (suddenEdge - softU * 0.5f)) / softU);
+                            alpha = MathF.Min(alpha, aSudden);
                         }
 
                         // Hidden (판정선쪽 가림: u < Hidden/100)
@@ -328,8 +414,8 @@ namespace PIURiseCustom
                             float hiddenEdge = SaveCustomConfig.Hidden / 100f;
                             float aHidden = softU <= 0.0001f
                                 ? (u < hiddenEdge ? 0f : 1f)
-                                : Mathf.Clamp01((u - (hiddenEdge - softU * 0.5f)) / softU);
-                            alpha = Mathf.Min(alpha, aHidden);
+                                : Clamp01((u - (hiddenEdge - softU * 0.5f)) / softU);
+                            alpha = MathF.Min(alpha, aHidden);
                         }
 
                         // FadeIn (u가 FadeInStart%에서 FadeInStart-FadeInLength%로 내려올 때 0→1)
@@ -337,8 +423,8 @@ namespace PIURiseCustom
                         {
                             float startU = SaveCustomConfig.FadeInStart / 100f;
                             float endU = (SaveCustomConfig.FadeInStart - SaveCustomConfig.FadeInLength) / 100f;
-                            float aFi = Mathf.Clamp01((startU - u) / Mathf.Max(0.001f, startU - endU));
-                            alpha = Mathf.Min(alpha, aFi);
+                            float aFi = Clamp01((startU - u) / MathF.Max(0.001f, startU - endU));
+                            alpha = MathF.Min(alpha, aFi);
                         }
 
                         // FadeOut (u가 FadeOutStart%에서 FadeOutStart-FadeOutLength%로 내려올 때 1→0)
@@ -346,8 +432,8 @@ namespace PIURiseCustom
                         {
                             float startU = SaveCustomConfig.FadeOutStart / 100f;
                             float endU = (SaveCustomConfig.FadeOutStart - SaveCustomConfig.FadeOutLength) / 100f;
-                            float aFo = Mathf.Clamp01((u - endU) / Mathf.Max(0.001f, startU - endU));
-                            alpha = Mathf.Min(alpha, aFo);
+                            float aFo = Clamp01((u - endU) / MathF.Max(0.001f, startU - endU));
+                            alpha = MathF.Min(alpha, aFo);
                         }
 
                         if (needCover || needFade)

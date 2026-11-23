@@ -153,6 +153,12 @@ namespace PIURiseCustom
         }
 
         private static readonly System.Collections.Generic.HashSet<NetCommand> _unmodeledSeen = new();
+        private static readonly System.Collections.Generic.HashSet<NetCommand> _sendSeen = new();
+
+        private static bool FirstSeen(NetCommand cmd)
+        {
+            lock (_sendSeen) return _sendSeen.Add(cmd);
+        }
 
         private static void NoteUnmodeled(NetCommand cmd)
         {
@@ -261,7 +267,9 @@ namespace PIURiseCustom
                 if (ModConfig.OfflineMode.Value)
                 {
                     string stub = BuildStubResponse(command);
-                    Mod.Log.Msg($"[OfflineStub] Send({command}) 차단 → {stub}");
+                    // 같은 명령이 씬 전환마다 반복되므로 명령별 첫 1회만 Msg로 남긴다(v0.3.3, 로그 소음 감소)
+                    if (FirstSeen(command))
+                        Mod.Log.Msg($"[OfflineStub] Send({command}) 차단 → {stub} (이후 같은 명령은 기록 생략)");
                     try
                     {
                         callback?.Invoke(stub);

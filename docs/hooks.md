@@ -42,7 +42,9 @@ JUDGE 열거형: 0 Perfect, 1 Great, 2 Good, 3 Bad, 4 Miss (src_dummy\PIUMobileS
 | `SteamManager.CheckAllDLCStatus()` | 0x7DB090 | 시그니처만 | DLC 소유 확인 |
 | `SteamManager.IsDLCInstalled(uint appID)` | 0x7DBA90 | 시그니처만 | DLC 설치 확인 |
 
-## 4. PIURiseCustom v0.3.2 실제 패치 목록 (63개, 2026-11-23 실기 부팅 63/63 적용)
+## 4. PIURiseCustom v0.3.3 실제 패치 목록 (속성 기반 61개 + 동적 2개)
+
+v0.3.2는 63개(2026-11-23 실기 부팅 63/63). v0.3.3부터 노트 비주얼 `LateUpdate` 훅 2개는 `SafePatcher` 집계에서 빠지고, 비주얼 기능이 하나라도 켜졌을 때만 `MainStage.Start`에서 붙는다(`NoteVisualPatches.LateUpdateHooks.Sync`).
 
 RVA 대신 **이름**으로 걸린다. 게임 업데이트 후 `[Patch] … 실패` 로그에 나온 클래스 이름을 이 표에서 찾아 영향 기능을 판단한다.
 "관문"은 Prefix가 원본 실행 여부를 좌우하는 지점 — 여기서 실패·예외가 나면 해당 화면 자체가 깨질 수 있다.
@@ -62,7 +64,7 @@ RVA 대신 **이름**으로 걸린다. 게임 업데이트 후 `[Patch] … 실�
 | 플레이 옵션 | `PUMPPlayer.JudgeNote`·`JudgeLine`·`DrawStep`·`JudgeStep_PostProcess`·`CalcNewBestScore`·`ACCalcNewBestScore`, `PlayBase.StartSong`, `PlayerData.SaveUserPlayResult`, `ScoreRoller.InitData` | Prefix/Postfix | AutoPlay/AllPerfect/BlockSave/MaxScore/판정바 해당 기능만 꺼짐 |
 | 클리어 연출 유예 | `PlayBase.<CoShowNoMiss>d__N.MoveNext` (`TargetMethod`로 이름 검색) | Prefix | PERFECT GAME 연출이 곡 중간에 뜸 |
 | 일시정지 | `MainStage.PauseAllow`(getter), `InGameUI.callMenu` | Postfix / Prefix+Postfix | 부분 채보 후 ESC 불가 |
-| 노트 비주얼 | `SpliteScript.Init`·`LateUpdate`, `LongSpliteScript.LateUpdate` | Postfix | Sway/Chaos/Sudden/Hidden/Fade/CustomNotes 꺼짐 |
+| 노트 비주얼 | `SpliteScript.Init`(속성), `SpliteScript.LateUpdate`·`LongSpliteScript.LateUpdate`(동적, `AccessTools.DeclaredMethod`) | Postfix | Sway/Chaos/Sudden/Hidden/Fade/CustomNotes 꺼짐. 동적 훅 실패는 `[Patch]`가 아니라 `[NoteVisual] … 실패` 경고로 나온다 |
 | 마라톤 | `ResultUI.DoEscape`·`OnShow`·`OnHide` | Prefix/Postfix | 마라톤 꺼짐 |
 | 스테이지 수명 | `MainStage.Start`·`SaveResult`·`OnDisable`·`OnDestroy` | Prefix/Postfix | config 핫리로드·오버레이 정리 안 됨 |
 
@@ -72,7 +74,8 @@ RVA 대신 **이름**으로 걸린다. 게임 업데이트 후 `[Patch] … 실�
 2. 게임을 MelonLoader로 1회 실행 → `MelonLoader\Il2CppAssemblies\` 재생성 (모드는 일단 그대로 둬도 된다: 실패 패치만 꺼지고 부팅은 계속됨)
 3. `Latest.log`에서 확인:
    - `[Build] …` 경고 줄 (검증 빌드와 다름)
-   - `[Patch] Harmony 패치 N/63개 적용` — 실패 클래스 이름 목록
+   - `[Patch] Harmony 패치 N/61개 적용` — 실패 클래스 이름 목록
+   - 비주얼 기능을 켠 곡에서 `[NoteVisual] … 찾지 못해` / `… 실패` 경고 (동적 훅)
 4. 실패 클래스를 §4 표에서 찾아 대상 메서드를 새 덤프(`il2cpp_dump`, ModdingSupportTool `search_reference`)에서 다시 찾는다. 이름이 바뀌었으면 패치 속성만 고치면 된다
 5. `dotnet build … -c Release` — interop 시그니처가 바뀐 메서드는 컴파일 오류로 드러난다 (interop 미생성이면 `CheckGameReferences`가 원인 메시지를 낸다)
 6. 오프라인 훅 10종(§4 '오프라인' 행, 멀티 WebSocket 차단 포함)이 전부 적용될 때까지는 `OfflineMode=1` 유지 + 온라인 접속 금지
