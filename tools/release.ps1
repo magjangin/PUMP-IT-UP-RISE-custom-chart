@@ -82,7 +82,8 @@ PIURiseCustom.dll을 ``<게임>\Mods\``에 복사 (MelonLoader 0.7.3, 검증 빌
 SHA256 (zip): $sha
 "@
 $notesPath = "dist\release-notes-$tag.md"
-Set-Content -Path $notesPath -Value $notes -Encoding UTF8
+# PS 5.1의 Set-Content -Encoding UTF8은 BOM을 붙여 릴리즈 노트 첫 줄 앞에 보이지 않는 문자가 생긴다 → BOM 없는 UTF-8로 쓴다
+[System.IO.File]::WriteAllText((Join-Path $root $notesPath), $notes, (New-Object System.Text.UTF8Encoding($false)))
 Write-Host "[release] $zip"
 Write-Host "[release] SHA256 $sha"
 Write-Host "[release] 노트 초안 $notesPath"
@@ -93,9 +94,18 @@ if (-not $Publish) {
 }
 
 # 4. 게시
+# Windows PowerShell 5.1은 Stop 모드에서 네이티브 명령의 stderr 출력(git push의 "To https://…" 같은 정상 진행 메시지)을
+# 오류로 바꿔 스크립트를 멈춘다(v0.3.5 첫 게시 때 태그만 올라가고 릴리즈 생성 전에 중단됨). 여기부터는 종료 코드로만 판정한다.
+$ErrorActionPreference = "Continue"
 git tag -a $tag -m "PIURiseCustom $tag"
-git push origin $tag
+if ($LASTEXITCODE -ne 0) { Fail "태그 생성 실패" }
+git push --quiet origin $tag 2>&1 | Out-Host
 if ($LASTEXITCODE -ne 0) { Fail "태그 푸시 실패" }
-gh release create $tag $zip --title "PIURiseCustom $tag" --notes-file $notesPath
+gh release create $tag $zip --title "PIURiseCustom $tag" --notes-file $notesPath 2>&1 | Out-Host
 if ($LASTEXITCODE -ne 0) { Fail "gh release create 실패 (태그 $tag 는 이미 푸시됨)" }
+# 로컬 백업 원격(local)이 있으면 main과 태그도 같이 올린다
+if ((git remote) -contains "local") {
+    git push --quiet local main $tag 2>&1 | Out-Host
+    if ($LASTEXITCODE -ne 0) { Write-Host "[release] local 원격 푸시 실패(게시는 완료됨)" -ForegroundColor Yellow }
+}
 Write-Host "[release] 게시 완료: $tag" -ForegroundColor Green
