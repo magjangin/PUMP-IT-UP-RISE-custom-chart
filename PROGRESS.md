@@ -29,9 +29,13 @@
   - 청소: 미사용 `KeyInput.Awake` 훅·`TryGetAudioDurationSeconds`·`PackCount`·`IsMarathonBannerVisible`·`ClearJacketCache` 제거, 존재하지 않던 F9/F10 단축키 문서 삭제
   - 검증: 빌드 경고 0/오류 0, 실기 부팅 `[Patch] 61/61` + 오프라인 타이틀 진입 확인. 선곡~플레이 재실기는 다른 세션이 화면 제어 중이라 미실시
 
+- [완료·빌드만] 11. v0.3.2 오프라인 빈틈 보강 (2026-11-23) — OfflineStubPatches.cs(`MultiplayController.ConnectAsync` 차단, 미확인 NetCommand 1회 경고, set 계열 명시), NoteVisualPatches.cs(풀링 방어·딕셔너리 통합), GameplayOptionPatches.cs(MaxScore 중복 방지·로그), Mod.cs(0.3.2) — 외부 주소 전수 검색 결과 `riselive` REST·WS뿐. 빌드 경고 0/오류 0. **실기 미검증**
+
 ## 다음 세션 할 일
-1. v0.3.1로 커스텀 곡 1판(선곡 → 플레이 → 결과) 재실기 — BMS Split=4 판정·스크롤, 프리뷰→본게임 오디오 캐시, 키뷰어 확인
+0. v0.3.2 실기: 부팅 로그 `Patches=62 (실패 0)` 확인, 멀티 메뉴 진입 시 반응, `MaxScore`를 바꿔 한 판 돌려 `[MaxScore]` 로그 확인
+1. v0.3.2로 커스텀 곡 1판(선곡 → 플레이 → 결과) 재실기 (v0.3.1 로그는 선곡·프리뷰까지만 있고 플레이 기록 없음) — BMS Split=4 판정·스크롤, 프리뷰→본게임 오디오 캐시, 키뷰어 확인
 2. `.ucs` 멀티블록(변속) 차트 실기 검증
-3. 점수표 상수(int[6] `<PrivateImplementationDetails>.21A1F6B9...`, float[5] `9EC6817D...`) 값 확인 — metadata의 FieldRVA 데이터라 Il2CppDumper 산출물에 없음. Cpp2IL 또는 런타임에서 읽어야 함
+3. ~~점수표 상수 확인~~ **완료 (2026-11-23)** — dump.cs에 적힌 `Metadata offset`(0x97E3F0 / 0x97E570)을 global-metadata.dat에서 직접 읽음. int[6] `21A1F6B9...` = {1000, 1000, 500, 100, -200, -500}, float[5] `9EC6817D...` = {1, 0.7, 0.3, 0.1, 0}. Cpp2IL·런타임 불필요
 4. 버전 고정 여부 결정: 현재 AutoUpdateBehavior 0(자동 업데이트). 업데이트되면 docs/hooks.md §5 절차를 따를 것
-5. (선택) `NoteVisualPatches` 풀링 재사용 시 기준 위치 캐시, `MaxScore` 중복 스케일 가능성 실측 (AGENTS.md §7 잠재 위험)
+5. (선택) `NoteVisualPatches` 풀링 방어·`MaxScore` 중복 방지는 v0.3.2에서 코드로 넣었으니 실기로 효과 확인 (AGENTS.md §7)
+6. (선택) `float[5]`(1, 0.7, 0.3, 0.1, 0)가 쓰이는 곳(`_scoreJudge` @0x164 호출부) 추적

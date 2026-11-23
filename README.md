@@ -2,7 +2,7 @@
 
 **PUMP IT UP RISE** (Steam / Unity 2022.3 IL2CPP)용 MelonLoader 기반 **커스텀 차트 · 미디어 주입 · 오프라인 모드** 통합 프로젝트입니다.
 
-- **현재 버전:** `v0.3.1`
+- **현재 버전:** `v0.3.2`
 - **제작자:** 화영왕 (`magjangin`)
 - **대상 게임:** PUMP IT UP RISE (Steam AppID `2756930`, Build `26399668` 기준 실기 검증)
 - **로더:** MelonLoader `0.7.3` (`net6.0` / IL2CPP)
@@ -29,6 +29,8 @@
 
 ### 4. 오프라인 서버 스텁 (`OfflineMode`)
 - 커스텀 플레이 중 온라인 랭킹/기록 오염을 방지하기 위해 기본값으로 게임 서버 통신을 차단하고 로컬 스텁 응답을 반환합니다.
+- 멀티플레이 WebSocket 접속(`MultiplayController.ConnectAsync`)도 차단해, 오프라인 모드에서는 외부로 나가는 통신이 없습니다. 멀티 메뉴는 연결 대기 상태로 남습니다.
+- 응답 형식을 모르는 서버 명령은 빈 객체 `{}`로 응답하고 로그에 한 번 경고합니다(`[OfflineStub] 응답 형식 미확인 명령`).
 - Steam 소유권 및 DLC 검증(`IsDLCInstalled`)은 우회하지 않으며, 오프라인 모드에서도 정상 실행되는 Steam 클라이언트를 그대로 사용합니다.
 
 ### 5. 플레이 옵션 & 인게임 오버레이 (`SaveCustomKey/config.txt`)
@@ -103,7 +105,7 @@ dotnet build "mod/PIURiseCustom/PIURiseCustom.csproj" -c Release -p:GamePath="C:
 ```text
 .
 ├─ mod/
-│  ├─ PIURiseCustom/      # 통합 커스텀 차트 · 오프라인 주력 모드 (v0.3.1)
+│  ├─ PIURiseCustom/      # 통합 커스텀 차트 · 오프라인 주력 모드 (v0.3.2)
 │  └─ PIURiseSkeleton/    # 읽기 전용 판정 관찰용 최소 스켈레톤 모드 (PIURiseCustom과 함께 설치하지 말 것)
 ├─ docs/
 │  ├─ hooks.md            # 후킹 타깃, 전체 패치 목록, 업데이트 점검 절차

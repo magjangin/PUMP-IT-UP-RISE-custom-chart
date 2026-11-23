@@ -1,6 +1,6 @@
 # PUMP IT UP RISE — 인수인계 문서 (AGENTS.md)
 
-> 작성 2026-11-22, 최신화 2026-11-23 (v0.3.1 감사·업데이트 내성 작업). 단계별 진행 기록은 [PROGRESS.md](PROGRESS.md), 훅 전체 목록·업데이트 점검 절차는 [docs/hooks.md](docs/hooks.md).
+> 작성 2026-11-22, 최신화 2026-11-23 (v0.3.2 오프라인 빈틈 보강·잠재 위험 방어). 단계별 진행 기록은 [PROGRESS.md](PROGRESS.md), 훅 전체 목록·업데이트 점검 절차는 [docs/hooks.md](docs/hooks.md).
 > **확인** = 디스크·로그·의사코드로 직접 본 것, **추정** = 해석.
 
 ## 1. 게임 버전 및 고정 여부
@@ -24,13 +24,17 @@
 - 모드 배포는 `-p:Deploy=true`일 때만 Mods\로 복사 — 기본 빌드는 게임 폴더를 건드리지 않게 하려는 것
 - **패치 적용을 MelonLoader에 맡기지 않는 이유 (v0.3.1)**: 기본 `PatchAll`은 패치 클래스 하나가 실패하면(업데이트로 대상 메서드가 사라짐 등) 예외로 멈춰 뒤의 패치가 빠지거나 모드 초기화 자체가 실패한다. 그래서 `[assembly: HarmonyDontPatchAll]` + `SafePatcher.ApplyAll`이 `[HarmonyPatch]` 클래스마다 `CreateClassProcessor(t).Patch()`를 따로 try/catch로 적용한다. 실패한 패치 이름은 `[Patch] … 실패 N개: …` 로그로 남고 나머지 기능은 살아 있다
 - **IL2CPP Prefix 예외 = 원본 메서드 건너뜀**: Il2CppInterop 트램펄린은 패치 본문 예외를 삼키고 기본값을 반환한다. 즉 Prefix가 NRE를 내면 원본(`CacheSongTable`, `IngameSongInfoUI.OnShow`, `PlayBase.LoadStep` 등)도 실행되지 않는다. 그래서 게임 흐름의 관문에 걸린 Prefix는 전부 try/catch로 감싸고, `Song.ID` 같은 널 가능 접근은 `Util.SongId`/`Util.CurrentSongId`를 거친다
+- **멀티 WebSocket을 `ConnectAsync`에서 막는 이유 (v0.3.2)**: 게임의 외부 주소는 `riselive`의 REST(:3000)·WS(:3011) 둘뿐이고(stringliteral 전수 검색), REST는 `NetworkManager.Send`로 모이지만 WS는 `MultiplayController`가 `ClientWebSocket`을 직접 연다. 오프라인 모드가 "통신 0"이 되려면 이 출구도 막아야 한다. 접속 시도 대신 완료된 Task만 돌려주므로 `OnConnected`는 오지 않고 멀티 화면은 연결 대기 상태로 남는다(그 화면의 실제 반응은 **미확인**)
+- 스텁 응답 표에 없는 `NetCommand`는 `{}`로 응답하되 `NoteUnmodeled`가 처음 한 번만 `[OfflineStub] 응답 형식 미확인 명령` 경고를 남긴다. 그 명령 직후 화면이 깨지면 `CaptureOnlineResponses`로 실제 응답을 캡처해 `BuildStubResponse`에 추가할 것
+- `NoteVisualPatches`의 노트 기준 위치는 `GetInstanceID()` 키에 `Parent`(parentLine 포인터)·`Split`을 같이 저장하고, 값이 달라지면 다시 잡는다(풀링 재사용 방어, v0.3.2). X/Y를 한 딕셔너리로 합쳐 프레임당 조회도 반으로 줄었다
+- `MaxScore` 스케일은 직전 스케일 결과(`_lastScaledScore`)와 같은 값이면 건너뛴다(같은 메서드가 또 불릴 때 중복 방지). 스테이지당 처음 5번 `[MaxScore] raw → scaled`를 로그에 남기므로, `MaxScore`를 1,000,000이 아닌 값으로 바꿔 한 판 돌린 뒤 값이 누적되는지 로그로 확인할 것
 - `config.txt`(SaveCustomKey)가 설정 원본이다. `ModConfig`(MelonPreferences)의 `OfflineMode`/`CustomEnabled`/`CustomChartOffsetMs`는 config.txt를 읽을 때마다 덮어써진다
 - 텍스트 파일(config.txt, info.txt, 차트)은 `Util.ReadAllLinesSmart`로 읽는다: BOM → 엄격 UTF-8 → CP949 → Shift-JIS → Latin1 순. EUC-KR로 저장한 info.txt 제목이 깨지지 않게 하려는 것
 - BMS 변환 분할(Split)은 고정 16이 아니라 노트·변속 위치를 정확히 표현하는 최소값(4,8,12,16,24,32,48,64,96 중)을 고른다. 셋잇단 양자화 오류를 없애고, 행×레인마다 Il2Cpp `Note` 객체를 만드는 비용을 줄이기 위함(실곡 `hwa2.bms`: 4800행 → 1200행)
 - 커스텀 곡 ID는 `990001`부터 경로 사전순으로 부여한다(README 구버전의 `HWA_0001` 표기는 오기). 폴더를 추가·삭제하면 뒤쪽 곡 ID가 밀린다
 
 ## 4. 핵심 훅 시그니처와 주입 파이프라인
-- 주입: version.dll(MelonLoader) → Mods\PIURiseCustom.dll → `OnInitializeMelon`에서 `SafePatcher.ApplyAll(HarmonyInstance)` (v0.3.1 기준 **61개 패치 클래스, 실기 부팅 61/61 적용 확인**)
+- 주입: version.dll(MelonLoader) → Mods\PIURiseCustom.dll → `OnInitializeMelon`에서 `SafePatcher.ApplyAll(HarmonyInstance)` (v0.3.2 기준 **62개 패치 클래스**. 실기 부팅 61/61 적용은 v0.3.1에서 확인, v0.3.2의 추가 1개는 빌드만 확인)
 - interop 네임스페이스: 전역 타입 `Il2Cpp.MainStage`, 네임스페이스 타입 `Il2CppPIUMobileStepDLL.PUMPPlayer` (확인)
 - 커스텀 곡 파이프라인 요약 (전체 표는 docs/hooks.md §4):
   1. `Mk2SongLoader.CacheSongTable/CacheArcadeSongTable` Prefix → `PIUDataBase.songTable`에 `Song` 주입
@@ -78,7 +82,8 @@ dotnet build "H:\source\repos\PUMP IT UP RISE-unity-il2cpp\mod\PIURiseSkeleton\P
 
 ## 6-1. 오프라인 버전 구현 (`OfflineStubPatches.cs`)
 - 정적 분석은 [docs/offline_feasibility.md](docs/offline_feasibility.md).
-- 구현 훅: `SteamManager.CheckTicket`, `NetworkManager.StartJwtCoroutine`, `SendHeartBeatRoutine`, `SendAuth`, `NetworkManager.Send`(private), `MaintenanceManager.TitleCheck`/`MaintenanceCheck`/`AlramNetworkError`, `PIUUtil.CommonUtil.SetPlayLogAtServer`
+- 구현 훅(10개): `SteamManager.CheckTicket`, `NetworkManager.StartJwtCoroutine`, `SendHeartBeatRoutine`, `SendAuth`, `NetworkManager.Send`(private), `MaintenanceManager.TitleCheck`/`MaintenanceCheck`/`AlramNetworkError`, `PIUUtil.CommonUtil.SetPlayLogAtServer`, `MultiplayController.ConnectAsync`(v0.3.2)
+- 11/22~23 실기 로그 전체에서 서버 접속·타임아웃·예외는 0건. 단, 스텁 응답은 "게임이 받아들이는 최소값"이며 서버 원본 응답은 캡처한 적이 없다(인벤·장비·시즌패스 화면은 빈 데이터)
 - 응답 캡처(`OfflineMode=0` + MelonPreferences `CaptureOnlineResponses=true`): `<게임>\MelonLoader\net_capture.jsonl`. v0.3.1부터 표준 JSON 이스케이프(이전 버전 캡처는 역슬래시가 이스케이프되지 않아 JSON 파서가 실패할 수 있음)
 
 ## 7. 검증 상태
@@ -87,8 +92,10 @@ dotnet build "H:\source\repos\PUMP IT UP RISE-unity-il2cpp\mod\PIURiseSkeleton\P
 - **확인 (오프라인 재현)**: 새 BMS 분할 선택을 실곡 `hwa2.bms`(오브젝트 358개)에 재현 → Split=4, 위치 오차 0
 - **미확인 (v0.3.1 변경분)**: 선곡~플레이~결과 구간 재실기 — 특히 BMS Split=4 차트 실제 판정·스크롤, 오디오 바이트 캐시(프리뷰→본게임), 키뷰어 상태 변화 시에만 색 갱신. 다음 세션에서 커스텀 곡 1판으로 확인할 것
 - **미확인 (이전부터)**: `.ucs` 멀티블록(변속) 실제 차트 실기 검증
-- **잠재 위험 (코드 감사, 미실측)**:
-  - `NoteVisualPatches`가 노트 원위치를 `GetInstanceID()`로 캐시한다. 게임이 노트 오브젝트를 풀링해 다른 레인에 재사용하면 `NoteSway`/`NoteSpeedChaos` 켰을 때 기준 X가 어긋날 수 있다
-  - `MaxScore` 스케일은 `CalcNewBestScore`/`ACCalcNewBestScore` Postfix에서 `_stat[0,13]`을 곱한다. 이 메서드가 한 곡에 여러 번 불리고 점수를 누적식으로 다시 계산하지 않으면 배율이 중복 적용될 수 있다(`MaxScore=1000000` 기본값이면 무관)
+- **확인 (2026-11-23, v0.3.2 빌드)**: 경고 0 / 오류 0, 패치 클래스 62개(수작업 집계). 새 훅·방어 코드는 **게임에서 실행해 본 적 없음**
+- **미확인 (v0.3.2 변경분)**: ① 멀티 메뉴 진입 시 `ConnectAsync` 차단 후 화면 반응(멈춤/팝업), ② `[OfflineStub] 응답 형식 미확인 명령` 경고가 실제로 어떤 명령에서 뜨는지, ③ `MaxScore≠1000000`일 때 `[MaxScore]` 로그
+- **잠재 위험 (코드 감사, v0.3.2에서 방어 추가했으나 실측 전)**:
+  - 노트 풀링: `Parent`/`Split` 검증으로 재사용을 감지해 기준 위치를 다시 잡는다. 단 게임이 재사용 시 `localPosition.x`를 초기화하지 않으면 재캡처 값에 이전 흔들림이 섞일 수 있다
+  - `MaxScore`: `_lastScaledScore` 비교로 같은 값 재적용은 막지만, 게임이 점수를 누적식(`+=`)으로 갱신하면 여전히 배율이 겹칠 수 있다. 또 `ScoreRoller.InitData` Prefix는 값이 1,000,000 이하면 다시 스케일하므로 `MaxScore<1000000`이면 표시값이 이중 스케일될 가능성이 있다(`MaxScore=1000000` 기본값이면 무관)
 
 ※ 디컴파일 코드·덤프·추출 리소스는 개인 PC 전용이며 공유하지 않는다.

@@ -108,9 +108,32 @@ namespace PIURiseCustom
                 case NetCommand.setPlayerInfo:
                 case NetCommand.setPlayerEquip:
                 case NetCommand.addPlayerInven:
+                case NetCommand.setDivisionInfo:
+                case NetCommand.setUseSeasonPoint:
+                case NetCommand.setSeasonPassInfo:
+                case NetCommand.setBattlePointInfo:
+                case NetCommand.setWorldMaxMissionTry:
+                case NetCommand.setWorldMaxMissionClear:
+                case NetCommand.setHighlightClear:
+                case NetCommand.setBossClear:
+                case NetCommand.updateDailyQuestProgress:
+                    return "{}";
+
+                // 아직 실제 응답 형식을 모르는 명령: 빈 객체로 응답하되 처음 한 번만 경고해 다음 실기에서 눈에 띄게 한다
                 default:
+                    NoteUnmodeled(cmd);
                     return "{}";
             }
+        }
+
+        private static readonly System.Collections.Generic.HashSet<NetCommand> _unmodeledSeen = new();
+
+        private static void NoteUnmodeled(NetCommand cmd)
+        {
+            bool first;
+            lock (_unmodeledSeen) first = _unmodeledSeen.Add(cmd);
+            if (first)
+                Mod.Log.Warning($"[OfflineStub] 응답 형식 미확인 명령 {cmd} → 빈 객체 {{}} 반환 (이 명령 직후 화면이 이상하면 응답 캡처 필요)");
         }
 
         // 1. 부팅 관문: SteamManager.CheckTicket(Action callback)
@@ -277,6 +300,23 @@ namespace PIURiseCustom
                     return true;
 
                 Mod.Log.Warning("[OfflineStub] MaintenanceManager.AlramNetworkError() 호출 차단됨");
+                return false;
+            }
+        }
+
+        // 8. 멀티플레이 WebSocket(wss://riselive…:3011) 접속 차단 (v0.3.2)
+        //    MultiplayController.ConnectAsync가 실제 소켓을 여는 유일한 출구다. 오프라인 모드에서는 연결을 시도하지 않고
+        //    완료된 Task만 돌려준다 → 외부로 나가는 통신이 0이 되고, OnConnected가 오지 않으니 멀티 화면은 연결 대기 상태로 남는다
+        [HarmonyPatch(typeof(MultiplayController), nameof(MultiplayController.ConnectAsync))]
+        internal static class MultiplayController_ConnectAsync_Patch
+        {
+            private static bool Prefix(ref Il2CppSystem.Threading.Tasks.Task __result)
+            {
+                if (!ModConfig.OfflineMode.Value)
+                    return true;
+
+                Mod.Log.Msg("[OfflineStub] MultiplayController.ConnectAsync 차단 (WebSocket 접속 안 함)");
+                __result = Il2CppSystem.Threading.Tasks.Task.CompletedTask;
                 return false;
             }
         }
