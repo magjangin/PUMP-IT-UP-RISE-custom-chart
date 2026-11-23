@@ -374,6 +374,17 @@ namespace PIURiseCustom
             }
         }
 
+        // 직전에 우리가 써 넣은 스케일 값. 게임이 점수를 다시 계산하지 않고 같은 메서드를 또 부르면 값이 그대로이므로 건너뛴다.
+        private static int _lastScaledScore = -1;
+        private static int _maxScoreLogCount;
+
+        /// <summary>새 스테이지 시작 때 MaxScore 추적 상태 초기화 (MainStage.Start Postfix에서 호출).</summary>
+        internal static void ResetMaxScoreTracking()
+        {
+            _lastScaledScore = -1;
+            _maxScoreLogCount = 0;
+        }
+
         private static void ApplyMaxScoreScale(PUMPPlayer player)
         {
             if (SaveCustomConfig.MaxScore == 1000000 || player == null)
@@ -393,10 +404,19 @@ namespace PIURiseCustom
 
                 int rawScore = rawObj.Unbox<int>();
                 if (rawScore <= 0) return;
+                if (rawScore == _lastScaledScore) return; // 이미 스케일된 값 → 중복 적용 방지
 
                 double scale = SaveCustomConfig.MaxScore / 1000000.0;
                 int scaled = (int)Math.Round(rawScore * scale);
                 arr.SetValue(Il2CppSystem.Int32.Parse(scaled.ToString(CultureInfo.InvariantCulture)), 0, 13);
+                _lastScaledScore = scaled;
+
+                // 다음 실기에서 배율이 누적되는지 눈으로 확인할 수 있게 스테이지당 처음 5번만 기록
+                if (_maxScoreLogCount < 5)
+                {
+                    _maxScoreLogCount++;
+                    Mod.Log.Msg($"[MaxScore] 점수 스케일 {rawScore} → {scaled} (x{scale:0.###}, {_maxScoreLogCount}/5)");
+                }
             }
             catch { }
         }

@@ -12,7 +12,7 @@ namespace PIURiseCustom
 {
     public class Mod : MelonMod
     {
-        public const string Version = "0.3.1";
+        public const string Version = "0.3.2";
 
         internal static MelonLogger.Instance Log;
         internal static readonly int[] JudgeCounts = new int[5];
@@ -64,6 +64,7 @@ namespace PIURiseCustom
             Mod.ResetCounts();
             InGameOverlayUI.ResetForNewStage();
             NoteVisualPatches.ResetForNewStage();
+            GameplayOptionPatches.ResetMaxScoreTracking();
             CustomMarathonPatches.OnCustomSongStarted(Util.CurrentSongId());
             Mod.Log.Msg("MainStage.Start — 인게임 시작");
         }

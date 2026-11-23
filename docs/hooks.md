@@ -10,7 +10,7 @@
 | `bool JudgeNote(int bank, int index, ref Note note, int grade)` (override, slot 4) | 0x799AD0 | 확인 | 노트 1개 판정 진입. `_mod(+0x198)+0x46`이 false면 판정 안 함. 노트에 판정 마크(+0x14 \|= 2) 후 `JudgeUnit` 호출 |
 | `bool JudgeUnit(int bank, int grade, bool bVisible, bool bNoMiss, int noteCount, int longNoteCount, int altSkinCount, bool playSound)` | 0x79A210 | 시그니처만 | JudgeNote/JudgeLine 공통 처리 |
 | `void JudgeStep_PostProcess(int bank, JUDGE judgement, int noteCount, bool bJudgeLong, float factor)` | 0x79A7B0 | 확인 | **판정 1회마다 집계.** `_stat[bank,judgement]++`, 콤보(idx 0x12)/미스콤보(0x14) 증감, 점수 누적(idx 0xD), `_scoreJudge(+0x164)` 갱신, 전 노트 판정 시 `_playBase+0xE0=true`. **판정 이벤트 관찰용 1순위 Postfix 지점** |
-| `int GetScore(int judgment, int combo, int noteNum, int isLongNote)` | 0x79B1F0 | 확인 | 판정별 점수. 점수표 int[6](상수, 값 미확인), Perfect/Great + combo>50 → +1000, 동시 3노트 ×1.5, 4노트 이상 ×2, 롱노트 Miss −300 |
+| `int GetScore(int judgment, int combo, int noteNum, int isLongNote)` | 0x79B1F0 | 확인 | 판정별 점수. 점수표 int[6] = {1000, 1000, 500, 100, -200, -500} (global-metadata.dat 오프셋 0x97E3F0에서 확인, 인덱스 5는 `4 < judgment`면 0 반환이라 미사용; 판정 정확도 float[5] = {1, 0.7, 0.3, 0.1, 0} @0x97E570), Perfect/Great + combo>50 → +1000, 동시 3노트 ×1.5, 4노트 이상 ×2, 롱노트 Miss −300 |
 | `bool JudgeLine(int Bank, Note[] pLine, int Grade, Position processingPos)` (override, slot 7) | 0x799C80 | 시그니처만 | 한 줄(동시 노트) 판정 |
 | `void SetJudgeTiming(float delay = 2.5f)` | 0x7992B0 | 시그니처만 | 판정 타이밍 창 설정 |
 | `void CalcScore_PostPlaying(int enchantLv)` | 0x79C170 | 시그니처만 | 플레이 종료 후 점수 계산 |
@@ -42,7 +42,7 @@ JUDGE 열거형: 0 Perfect, 1 Great, 2 Good, 3 Bad, 4 Miss (src_dummy\PIUMobileS
 | `SteamManager.CheckAllDLCStatus()` | 0x7DB090 | 시그니처만 | DLC 소유 확인 |
 | `SteamManager.IsDLCInstalled(uint appID)` | 0x7DBA90 | 시그니처만 | DLC 설치 확인 |
 
-## 4. PIURiseCustom v0.3.1 실제 패치 목록 (61개, 2026-11-23 실기 부팅 61/61 적용)
+## 4. PIURiseCustom v0.3.2 실제 패치 목록 (62개; 실기 부팅 확인은 v0.3.1의 61/61까지, v0.3.2 추가 1개는 빌드만 확인)
 
 RVA 대신 **이름**으로 걸린다. 게임 업데이트 후 `[Patch] … 실패` 로그에 나온 클래스 이름을 이 표에서 찾아 영향 기능을 판단한다.
 "관문"은 Prefix가 원본 실행 여부를 좌우하는 지점 — 여기서 실패·예외가 나면 해당 화면 자체가 깨질 수 있다.
@@ -57,7 +57,7 @@ RVA 대신 **이름**으로 걸린다. 게임 업데이트 후 `[Patch] … 실�
 | BGM | `AudioManager.LoadMusicSound` | Prefix | 템플릿 곡 음악이 나옴 |
 | BGA | `BGAPlayer.NeedCommonBgaChecker`·`Load`, `GlobalFunc.DoesAssetExists`, `EyeCatchUI.PreparePreviewVideo` | Prefix | 공통/템플릿 BGA, 프리뷰 영상 없음 |
 | 자켓·커튼 | `SongDataCell.Init`, `MSListBox.UpdateDisplayContent`·`UpdateLevels`, `EyeCatchUI.UpdateSong`, `IngameSongInfoUI.OnShow`·`SetNumberImages`·`SetLevelType`·`SetInfoData`, `BGAPlayerLoader.SetInfoData`, `ResultDefaultGameInfo.SetData`, `SongListContent.GetEyecatchSprite`·`GetArcadeEyecatchSprite` | Prefix/Postfix | 기본 이미지·템플릿 난이도 표시 |
-| 오프라인 | `SteamManager.CheckTicket`, `NetworkManager.StartJwtCoroutine`·`SendHeartBeatRoutine`·`SendAuth`·`Send`, `MaintenanceManager.TitleCheck`·`MaintenanceCheck`·`AlramNetworkError`, `CommonUtil.SetPlayLogAtServer` | Prefix(관문) | **부팅 불가 또는 서버 접속 시도** — 업데이트 후 이 중 하나라도 실패하면 `OfflineMode=0`으로 두지 말고 먼저 고칠 것 |
+| 오프라인 | `SteamManager.CheckTicket`, `NetworkManager.StartJwtCoroutine`·`SendHeartBeatRoutine`·`SendAuth`·`Send`, `MaintenanceManager.TitleCheck`·`MaintenanceCheck`·`AlramNetworkError`, `CommonUtil.SetPlayLogAtServer`, `MultiplayController.ConnectAsync`(v0.3.2, WebSocket 접속 차단) | Prefix(관문) | **부팅 불가 또는 서버 접속 시도** — 업데이트 후 이 중 하나라도 실패하면 `OfflineMode=0`으로 두지 말고 먼저 고칠 것 |
 | 플레이 옵션 | `PUMPPlayer.JudgeNote`·`JudgeLine`·`DrawStep`·`JudgeStep_PostProcess`·`CalcNewBestScore`·`ACCalcNewBestScore`, `PlayBase.StartSong`, `PlayerData.SaveUserPlayResult`, `ScoreRoller.InitData` | Prefix/Postfix | AutoPlay/AllPerfect/BlockSave/MaxScore/판정바 해당 기능만 꺼짐 |
 | 클리어 연출 유예 | `PlayBase.<CoShowNoMiss>d__N.MoveNext` (`TargetMethod`로 이름 검색) | Prefix | PERFECT GAME 연출이 곡 중간에 뜸 |
 | 일시정지 | `MainStage.PauseAllow`(getter), `InGameUI.callMenu` | Postfix / Prefix+Postfix | 부분 채보 후 ESC 불가 |
@@ -71,10 +71,10 @@ RVA 대신 **이름**으로 걸린다. 게임 업데이트 후 `[Patch] … 실�
 2. 게임을 MelonLoader로 1회 실행 → `MelonLoader\Il2CppAssemblies\` 재생성 (모드는 일단 그대로 둬도 된다: 실패 패치만 꺼지고 부팅은 계속됨)
 3. `Latest.log`에서 확인:
    - `[Build] …` 경고 줄 (검증 빌드와 다름)
-   - `[Patch] Harmony 패치 N/61개 적용` — 실패 클래스 이름 목록
+   - `[Patch] Harmony 패치 N/62개 적용` — 실패 클래스 이름 목록
 4. 실패 클래스를 §4 표에서 찾아 대상 메서드를 새 덤프(`il2cpp_dump`, ModdingSupportTool `search_reference`)에서 다시 찾는다. 이름이 바뀌었으면 패치 속성만 고치면 된다
 5. `dotnet build … -c Release` — interop 시그니처가 바뀐 메서드는 컴파일 오류로 드러난다 (interop 미생성이면 `CheckGameReferences`가 원인 메시지를 낸다)
-6. 오프라인 관문 6종이 전부 적용될 때까지는 `OfflineMode=1` 유지 + 온라인 접속 금지
+6. 오프라인 훅 10종(§4 '오프라인' 행, 멀티 WebSocket 차단 포함)이 전부 적용될 때까지는 `OfflineMode=1` 유지 + 온라인 접속 금지
 7. 커스텀 곡 1판(선곡 → 플레이 → 결과) 실기 확인 후 `SafePatcher.VerifiedSteamBuildId`/`VerifiedGameVersion`, AGENTS.md §1·§7, 이 문서 제목의 빌드 번호를 갱신
 8. RVA가 필요한 분석(§1~3 표)은 새 GameAssembly.dll 기준으로 다시 뽑아야 한다
 

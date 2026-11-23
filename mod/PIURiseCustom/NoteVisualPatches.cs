@@ -19,8 +19,15 @@ namespace PIURiseCustom
     internal static class NoteVisualPatches
     {
         // SpliteScript 인스턴스 ID별 원본 로컬 X/Y 위치 및 랜덤 시드 캐시
-        private static readonly Dictionary<int, float> _baseLocalX = new();
-        private static readonly Dictionary<int, float> _baseLocalY = new();
+        // X/Y를 한 항목으로 묶어 프레임당 조회를 노트당 1회로 줄인다. Parent/Split을 같이 기억해 두었다가
+        // 풀링으로 다른 라인·레인에 재사용된 노트면(값이 달라짐) 기준 위치를 다시 잡는다.
+        private struct NoteBase
+        {
+            public float X, Y;
+            public IntPtr Parent;
+            public int Split;
+        }
+        private static readonly Dictionary<int, NoteBase> _noteBase = new();
         private static readonly Dictionary<int, float> _noteChaosMult = new();
         private static readonly float[] _laneChaosMult = new float[16];
         private static bool _laneChaosInitialized = false;
@@ -36,8 +43,7 @@ namespace PIURiseCustom
 
         public static void ResetForNewStage()
         {
-            _baseLocalX.Clear();
-            _baseLocalY.Clear();
+            _noteBase.Clear();
             _noteChaosMult.Clear();
             _laneChaosInitialized = false;
             LastJudgeScreenY = -1f;
@@ -228,16 +234,14 @@ namespace PIURiseCustom
 
                 // 원본 로컬 X/Y 기록 (프레임 누적 폭주 방지용)
                 Vector3 lp = tr.localPosition;
-                if (!_baseLocalX.TryGetValue(id, out float origX))
+                IntPtr parentPtr = parentLine != null ? parentLine.Pointer : IntPtr.Zero;
+                if (!_noteBase.TryGetValue(id, out NoteBase nb) || nb.Parent != parentPtr || nb.Split != note.Split)
                 {
-                    origX = lp.x;
-                    _baseLocalX[id] = origX;
+                    nb = new NoteBase { X = lp.x, Y = lp.y, Parent = parentPtr, Split = note.Split };
+                    _noteBase[id] = nb;
                 }
-                if (!_baseLocalY.TryGetValue(id, out float origY))
-                {
-                    origY = lp.y;
-                    _baseLocalY[id] = origY;
-                }
+                float origX = nb.X;
+                float origY = nb.Y;
 
                 // 판정선 월드 Y 추정 (ArrowMaker 또는 PlayBase.ARROW_Y)
                 float judgeWorldY = playBase != null ? playBase.ARROW_Y : 0f;

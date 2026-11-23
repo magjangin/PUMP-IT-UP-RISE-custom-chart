@@ -35,7 +35,7 @@ CheckTicket 응답 처리(RVA 0x7E0030):
 | 시즌·재화 | Season Pass 4종, getHighlightCurrency, buyHighlight, Highlight Own/Clear | 서버 재화 기반이라 흉내 내지 않으면 사용 불가 |
 | 디비전·배틀 | Division 3종, BattlePoint/Leaders/MyBattleScore, setBossClear, getSkillUpBossSongs | 온라인 경쟁 모드. 사용 불가 |
 | 퀘스트·이벤트 | DailyQuest 3종, WorldMax 4종, trialDlcPlay, trialWorldMaxPlay, tryampassConnect | 사용 불가 |
-| 멀티플레이 | WebSocket(MultiplayController) | 사용 불가 |
+| 멀티플레이 | WebSocket(MultiplayController) | 사용 불가. v0.3.2부터 `MultiplayController.ConnectAsync` Prefix로 접속 자체를 막는다(소켓을 여는 유일한 출구, `BuildUrl`/`ClientWebSocket`은 이 안에서만 쓰임). 코드로 확인한 외부 주소는 `riselive` REST·WS뿐(stringliteral 전수 검색) |
 
 ### 4. 세이브는 로컬(Steam Cloud)에 있다 (확인)
 - `H:\steam\userdata\<id>\2756930\remote\`: `.data .archive .actions .favorite .option .prefs .sTable .ulData _play.log`
