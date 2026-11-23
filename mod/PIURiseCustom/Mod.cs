@@ -12,7 +12,7 @@ namespace PIURiseCustom
 {
     public class Mod : MelonMod
     {
-        public const string Version = "0.3.5";
+        public const string Version = "0.3.6";
 
         internal static MelonLogger.Instance Log;
         internal static HarmonyLib.Harmony PatchHarmony;
@@ -84,7 +84,7 @@ namespace PIURiseCustom
             Step("오버레이", InGameOverlayUI.ResetForNewStage);
             Step("노트 비주얼", NoteVisualPatches.ResetForNewStage);
             Step("노트 훅 동기화", () => NoteVisualPatches.LateUpdateHooks.Sync(Mod.PatchHarmony)); // config 핫리로드 결과에 맞춰 매 노트 훅을 붙이거나 뗀다
-            Step("MaxScore", GameplayOptionPatches.ResetMaxScoreTracking);
+            Step("플레이 옵션", GameplayOptionPatches.ResetForNewStage);
             Step("마라톤", () => CustomMarathonPatches.OnCustomSongStarted(Util.CurrentSongId()));
             Mod.Log.Msg("MainStage.Start — 인게임 시작");
         }

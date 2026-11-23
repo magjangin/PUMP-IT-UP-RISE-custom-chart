@@ -179,27 +179,23 @@ LaneCoverDebug=0
                 if (!force && writeUtc == _lastWriteUtc)
                     return;
 
+                // 기본 템플릿 값을 먼저 깔고 파일 값으로 덮는다(v0.3.6). 예전엔 "파일에 있는 키만" 덮어써서,
+                // 줄을 지운 항목은 기본값으로 돌아가지 않고 게임을 다시 켤 때까지 마지막 값이 남았다.
                 var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                ParseLines(SplitTemplate(), map);
+                var known = new HashSet<string>(map.Keys, StringComparer.OrdinalIgnoreCase);
 
-                foreach (string raw in Util.ReadAllLinesSmart(ConfigPath))
+                var fileMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                ParseLines(Util.ReadAllLinesSmart(ConfigPath), fileMap);
+                var unknown = new List<string>();
+                foreach (var kv in fileMap)
                 {
-                    string line = raw.Trim();
-                    if (string.IsNullOrEmpty(line) || line.StartsWith("#") || line.StartsWith("//"))
-                        continue;
-
-                    int sep = line.IndexOf('=');
-                    if (sep <= 0) sep = line.IndexOf(':');
-                    if (sep <= 0) continue;
-
-                    string k = line.Substring(0, sep).Trim();
-                    string val = line.Substring(sep + 1).Trim();
-                    // 인라인 주석 제거 (#RRGGBB 색상값의 선두 #은 보호)
-                    int commentIdx = val.IndexOf("//", StringComparison.Ordinal);
-                    if (commentIdx >= 0) val = val.Substring(0, commentIdx).Trim();
-
-                    if (!string.IsNullOrEmpty(k))
-                        map[k] = val;
+                    map[kv.Key] = kv.Value;
+                    if (!known.Contains(kv.Key)) unknown.Add(kv.Key);
                 }
+                // 오타·다른 게임 전용 키는 조용히 무시되던 것을 한 줄로 알려준다(Sixtar Gate 공용 config라면 정상일 수 있음)
+                if (unknown.Count > 0)
+                    Mod.Log?.Msg($"[Config] 이 모드가 쓰지 않는 키 {unknown.Count}개는 무시합니다: {string.Join(", ", unknown)}");
 
                 // [기본 / 오프라인]
                 // OfflineMode·CustomEnabled는 부팅 때만 적용한다. 곡 목록 주입과 서버 스텁(가짜 JWT)이 부팅 시점에 정해지므로
@@ -282,6 +278,32 @@ LaneCoverDebug=0
             catch (Exception ex)
             {
                 Mod.Log?.Warning($"[Config] 설정 파일 읽기 실패: {ex.Message}");
+            }
+        }
+
+        private static string[] SplitTemplate() =>
+            DefaultTemplate.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+
+        private static void ParseLines(IEnumerable<string> lines, Dictionary<string, string> map)
+        {
+            foreach (string raw in lines)
+            {
+                string line = raw.Trim();
+                if (string.IsNullOrEmpty(line) || line.StartsWith("#") || line.StartsWith("//"))
+                    continue;
+
+                int sep = line.IndexOf('=');
+                if (sep <= 0) sep = line.IndexOf(':');
+                if (sep <= 0) continue;
+
+                string k = line.Substring(0, sep).Trim();
+                string val = line.Substring(sep + 1).Trim();
+                // 인라인 주석 제거 (#RRGGBB 색상값의 선두 #은 보호)
+                int commentIdx = val.IndexOf("//", StringComparison.Ordinal);
+                if (commentIdx >= 0) val = val.Substring(0, commentIdx).Trim();
+
+                if (!string.IsNullOrEmpty(k))
+                    map[k] = val;
             }
         }
 
