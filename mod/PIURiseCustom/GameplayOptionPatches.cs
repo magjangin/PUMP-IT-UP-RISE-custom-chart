@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Globalization;
 using System.Reflection;
 using HarmonyLib;
@@ -177,49 +177,63 @@ namespace PIURiseCustom
             }
         }
 
-        // 4. MaxScore: 기본 1,000,000 만점을 config의 MaxScore 기준으로 비례 스케일링
-        [HarmonyPatch(typeof(PUMPPlayer), nameof(PUMPPlayer.CalcNewBestScore))]
-        internal static class PUMPPlayer_CalcNewBestScore_MaxScore_Patch
+        // 4. MaxScore: 결과 화면이 점수를 찍는 NumberRoller.RollCombo(Score, int value, float startDelay)의 value를 config의 MaxScore 기준으로 비례 스케일링한다.
+        //    - v0.3.0~v0.3.1: CalcNewBestScore/ACCalcNewBestScore Postfix에서 _stat[0,13]을 곱했지만, 두 메서드는 저장된 기록과 비교하는 "신기록 판정"일 뿐
+        //      점수를 쓰지 않아(BlockSave 때는 호출조차 안 됨) MaxScore가 전혀 적용되지 않았다.
+        //    - v0.3.2 1차: PlayBase.GetScoreAndAccuracy를 후킹했지만 실기 로그에서 한 번도 불리지 않았다(결과 화면은 이 경로를 안 씀).
+        //    - 실기 로그(2026-11-23)로 확인된 실제 경로: NumberRoller.RollCombo(Score, 1000000) → 여기서 스케일한다.
+        //    표시값만 바꾸고 게임 내부 점수(_stat)는 건드리지 않으며, 점수를 스케일하는 곳은 이 한 군데뿐이라 이중 적용이 없다.
+        [HarmonyPatch(typeof(NumberRoller), nameof(NumberRoller.RollCombo), new[] { typeof(NumberRoller.StatType), typeof(int), typeof(float) })]
+        internal static class NumberRoller_RollCombo_MaxScore_Patch
         {
-            private static void Postfix(PUMPPlayer __instance)
+            private static void Prefix(NumberRoller.StatType stat, ref int value)
             {
-                ApplyMaxScoreScale(__instance);
-            }
-        }
-
-        [HarmonyPatch(typeof(PUMPPlayer), nameof(PUMPPlayer.ACCalcNewBestScore))]
-        internal static class PUMPPlayer_ACCalcNewBestScore_MaxScore_Patch
-        {
-            private static void Postfix(PUMPPlayer __instance)
-            {
-                ApplyMaxScoreScale(__instance);
-            }
-        }
-
-        [HarmonyPatch(typeof(ScoreRoller), nameof(ScoreRoller.InitData))]
-        internal static class ScoreRoller_InitData_MaxScore_Patch
-        {
-            private static void Prefix(ref string score)
-            {
-                if (SaveCustomConfig.MaxScore == 1000000 || string.IsNullOrWhiteSpace(score))
+                if (stat != NumberRoller.StatType.Score)
                     return;
 
                 try
                 {
-                    // 쉼표 제거 후 숫자 파싱
-                    string digits = score.Replace(",", "").Trim();
-                    if (long.TryParse(digits, NumberStyles.Integer, CultureInfo.InvariantCulture, out long val))
-                    {
-                        // 이미 CalcNewBestScore에서 스케일링된 값이 1,000,000을 넘으면 중복 스케일 방지
-                        if (val <= 1000000)
-                        {
-                            long scaled = (long)Math.Round(val * (SaveCustomConfig.MaxScore / 1000000.0));
-                            score = scaled.ToString("N0", CultureInfo.InvariantCulture);
-                        }
-                    }
+                    int max = SaveCustomConfig.MaxScore;
+                    int raw = value;
+                    if (max != 1000000 && raw > 0)
+                        value = (int)Math.Round(raw * (max / 1000000.0));
+
+                    LogScorePath($"NumberRoller.RollCombo(Score) 표시값 {raw} → {value} (MaxScore={max})");
                 }
+                catch (Exception ex)
+                {
+                    LogScorePath($"RollCombo 점수 처리 오류: {ex.Message}");
+                }
+            }
+        }
+
+        // 확인용(값은 바꾸지 않음): 다른 화면·모드가 아래 경로로 점수를 표시하는지 기록한다. 로그에 뜨면 해당 경로에도 스케일이 필요하다는 뜻이다.
+        [HarmonyPatch(typeof(ArcadeResultUI), nameof(ArcadeResultUI.ApplyScoreCoroutine))]
+        internal static class ArcadeResultUI_ApplyScoreCoroutine_Log_Patch
+        {
+            private static void Prefix(int score) => LogScorePath($"[미처리 경로] ArcadeResultUI.ApplyScoreCoroutine(score={score})");
+        }
+
+        [HarmonyPatch(typeof(PlayBase), nameof(PlayBase.GetScoreAndAccuracy))]
+        internal static class PlayBase_GetScoreAndAccuracy_Log_Patch
+        {
+            private static void Postfix(int enLv, Il2CppSystem.ValueTuple<int, float> __result)
+            {
+                try { LogScorePath($"[미처리 경로] PlayBase.GetScoreAndAccuracy(enLv={enLv}) → 점수 {__result.Item1}, 정확도 {__result.Item2:0.####}"); }
                 catch { }
             }
+        }
+
+        // 점수 경로 로그는 스테이지당 처음 12줄만 남긴다(프레임마다 불리는 경로여도 로그가 넘치지 않게).
+        private static int _scorePathLogCount;
+
+        internal static void ResetMaxScoreTracking() => _scorePathLogCount = 0;
+
+        private static void LogScorePath(string msg)
+        {
+            if (_scorePathLogCount >= 12) return;
+            _scorePathLogCount++;
+            Mod.Log.Msg($"[MaxScore] {msg} ({_scorePathLogCount}/12)");
         }
 
         // 5. PERFECT GAME / FULL COMBO 연출(CoShowNoMiss)이 곡 중간에 뜨지 않도록 BGM 막바지까지 대기
@@ -372,53 +386,6 @@ namespace PIURiseCustom
                 }
                 catch { }
             }
-        }
-
-        // 직전에 우리가 써 넣은 스케일 값. 게임이 점수를 다시 계산하지 않고 같은 메서드를 또 부르면 값이 그대로이므로 건너뛴다.
-        private static int _lastScaledScore = -1;
-        private static int _maxScoreLogCount;
-
-        /// <summary>새 스테이지 시작 때 MaxScore 추적 상태 초기화 (MainStage.Start Postfix에서 호출).</summary>
-        internal static void ResetMaxScoreTracking()
-        {
-            _lastScaledScore = -1;
-            _maxScoreLogCount = 0;
-        }
-
-        private static void ApplyMaxScoreScale(PUMPPlayer player)
-        {
-            if (SaveCustomConfig.MaxScore == 1000000 || player == null)
-                return;
-
-            try
-            {
-                var statObj = player.Stat;
-                if (statObj == null) return;
-
-                var arr = statObj.TryCast<Il2CppSystem.Array>();
-                if (arr == null) return;
-
-                // Il2Cpp 2D 배열 _stat[0, (int)Count.eCountScore(13)]
-                var rawObj = arr.GetValue(0, 13);
-                if (rawObj == null) return;
-
-                int rawScore = rawObj.Unbox<int>();
-                if (rawScore <= 0) return;
-                if (rawScore == _lastScaledScore) return; // 이미 스케일된 값 → 중복 적용 방지
-
-                double scale = SaveCustomConfig.MaxScore / 1000000.0;
-                int scaled = (int)Math.Round(rawScore * scale);
-                arr.SetValue(Il2CppSystem.Int32.Parse(scaled.ToString(CultureInfo.InvariantCulture)), 0, 13);
-                _lastScaledScore = scaled;
-
-                // 다음 실기에서 배율이 누적되는지 눈으로 확인할 수 있게 스테이지당 처음 5번만 기록
-                if (_maxScoreLogCount < 5)
-                {
-                    _maxScoreLogCount++;
-                    Mod.Log.Msg($"[MaxScore] 점수 스케일 {rawScore} → {scaled} (x{scale:0.###}, {_maxScoreLogCount}/5)");
-                }
-            }
-            catch { }
         }
     }
 }

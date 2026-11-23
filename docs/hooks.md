@@ -42,7 +42,7 @@ JUDGE 열거형: 0 Perfect, 1 Great, 2 Good, 3 Bad, 4 Miss (src_dummy\PIUMobileS
 | `SteamManager.CheckAllDLCStatus()` | 0x7DB090 | 시그니처만 | DLC 소유 확인 |
 | `SteamManager.IsDLCInstalled(uint appID)` | 0x7DBA90 | 시그니처만 | DLC 설치 확인 |
 
-## 4. PIURiseCustom v0.3.2 실제 패치 목록 (62개; 실기 부팅 확인은 v0.3.1의 61/61까지, v0.3.2 추가 1개는 빌드만 확인)
+## 4. PIURiseCustom v0.3.2 실제 패치 목록 (62개, 2026-11-23 실기 부팅 62/62 적용)
 
 RVA 대신 **이름**으로 걸린다. 게임 업데이트 후 `[Patch] … 실패` 로그에 나온 클래스 이름을 이 표에서 찾아 영향 기능을 판단한다.
 "관문"은 Prefix가 원본 실행 여부를 좌우하는 지점 — 여기서 실패·예외가 나면 해당 화면 자체가 깨질 수 있다.
