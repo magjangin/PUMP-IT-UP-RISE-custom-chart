@@ -29,9 +29,10 @@ namespace PIURiseCustom
 
         public static void OnCustomSongStarted(string songId)
         {
-            // 곡이 실제로 시작됐으면 직전 결과창의 "다음 곡 전환 중" 상태는 끝난 것이다.
-            // 예전엔 OnShow에서만 풀어서, 마라톤 곡을 도중에 나가고 공식 곡을 치면 결과창 ESC(DoEscape)가 계속 막혔다(v0.3.4).
+            // 곡이 시작됐으면 직전 결과창 전환은 끝난 것이다. 예전엔 마라톤 전환 뒤 일시정지→나가기로 결과창을 거치지 않으면
+            // 이 값이 true로 남아, 이후 모든 결과창(공식 곡 포함)에서 Esc(DoEscape)가 막혔다.
             _transitionTriggered = false;
+            _activeResultUI = null;
 
             if (!SaveCustomConfig.CustomMarathon || string.IsNullOrEmpty(songId))
                 return;

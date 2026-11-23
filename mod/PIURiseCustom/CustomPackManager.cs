@@ -58,6 +58,8 @@ namespace PIURiseCustom
         private static readonly List<CustomPack> _catalogSongs = new();
         private static readonly Dictionary<string, CustomPack> _bySongId = new(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, CustomPack> _byFolderKey = new(StringComparer.OrdinalIgnoreCase);
+        // 선곡 목록에 실제로 주입한 곡 ID만. override 슬롯 팩도 ID는 받지만(번호 유지) 목록에는 없으므로 여기서 뺀다.
+        private static readonly HashSet<string> _catalogIds = new(StringComparer.OrdinalIgnoreCase);
 
         public static IReadOnlyList<CustomPack> CatalogSongs => _catalogSongs;
 
@@ -84,6 +86,7 @@ namespace PIURiseCustom
             _catalogSongs.Clear();
             _bySongId.Clear();
             _byFolderKey.Clear();
+            _catalogIds.Clear();
 
             string root = ModConfig.ResolvedCustomRoot;
             if (!Directory.Exists(root))
@@ -151,7 +154,10 @@ namespace PIURiseCustom
                 _byFolderKey[$"{pack.AlbumName}/{pack.FolderName}"] = pack;
 
             if (isCatalogSong)
+            {
                 _catalogSongs.Add(pack);
+                _catalogIds.Add(pack.SongId);
+            }
 
             string albumTag = string.IsNullOrEmpty(pack.AlbumName) ? "" : $"[{pack.AlbumName}] ";
             Mod.Log?.Msg(
@@ -426,7 +432,7 @@ namespace PIURiseCustom
                 foreach (string raw in Util.ReadAllLinesSmart(chartPath))
                 {
                     if (++lineCount > 200) break;
-                    string line = raw.Trim();
+                    string line = raw.Trim().Replace('\t', ' ');
                     if (ext == ".ucs")
                     {
                         if (line.StartsWith(":Mode=", StringComparison.OrdinalIgnoreCase))
@@ -578,7 +584,7 @@ namespace PIURiseCustom
 
         public static bool IsCatalogSongId(string songId)
         {
-            return !string.IsNullOrEmpty(songId) && _bySongId.ContainsKey(songId);
+            return !string.IsNullOrEmpty(songId) && _catalogIds.Contains(songId);
         }
 
         public static CustomPack ResolveBySongId(string songId)

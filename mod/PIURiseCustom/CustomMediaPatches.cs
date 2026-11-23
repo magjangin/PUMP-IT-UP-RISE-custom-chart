@@ -150,6 +150,8 @@ namespace PIURiseCustom
                     return;
 
                 var pack = _pendingCustomPack ?? CustomPackManager.Resolve(GetCurrentSongId(), GetCurrentPlayType(), GetCurrentLevel());
+                // 한 번 쓴 슬롯은 비운다. 남겨 두면 LoadStep을 거치지 않는 다음 Step.Load(다른 모드·화면)에 지난 커스텀 차트가 들어갈 수 있다.
+                _pendingCustomPack = null;
                 if (pack == null)
                     return;
 

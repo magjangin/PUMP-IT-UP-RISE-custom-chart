@@ -627,36 +627,46 @@ namespace PIURiseCustom
         [HarmonyPatch(typeof(SongListContent), nameof(SongListContent.GetEyecatchSprite))]
         internal static class SongListContent_GetEyecatchSprite_Patch
         {
+            // 반환값이 있는 메서드의 Postfix가 예외를 던지면 IL2CPP 트램펄린이 기본값(null)을 돌려줘 공식 곡 자켓까지 사라진다 → 격리
             private static void Postfix(SongListContent __instance, ref Sprite __result)
             {
-                if (!ModConfig.CustomEnabled.Value || __instance == null)
-                    return;
+                try
+                {
+                    if (!ModConfig.CustomEnabled.Value || __instance == null)
+                        return;
 
-                var pack = CustomPackManager.ResolveBySongId(Util.SongId(__instance.Song));
-                if (pack == null || string.IsNullOrEmpty(pack.JacketPath))
-                    return;
+                    var pack = CustomPackManager.ResolveBySongId(Util.SongId(__instance.Song));
+                    if (pack == null || string.IsNullOrEmpty(pack.JacketPath))
+                        return;
 
-                var sprite = LoadOrGetJacket(pack.JacketPath);
-                if (sprite != null)
-                    __result = sprite;
+                    var sprite = LoadOrGetJacket(pack.JacketPath);
+                    if (sprite != null)
+                        __result = sprite;
+                }
+                catch { }
             }
         }
 
         [HarmonyPatch(typeof(SongListContent), nameof(SongListContent.GetArcadeEyecatchSprite))]
         internal static class SongListContent_GetArcadeEyecatchSprite_Patch
         {
+            // 반환값이 있는 메서드의 Postfix가 예외를 던지면 IL2CPP 트램펄린이 기본값(null)을 돌려줘 공식 곡 자켓까지 사라진다 → 격리
             private static void Postfix(SongListContent __instance, ref Sprite __result)
             {
-                if (!ModConfig.CustomEnabled.Value || __instance == null)
-                    return;
+                try
+                {
+                    if (!ModConfig.CustomEnabled.Value || __instance == null)
+                        return;
 
-                var pack = CustomPackManager.ResolveBySongId(Util.SongId(__instance.Song));
-                if (pack == null || string.IsNullOrEmpty(pack.JacketPath))
-                    return;
+                    var pack = CustomPackManager.ResolveBySongId(Util.SongId(__instance.Song));
+                    if (pack == null || string.IsNullOrEmpty(pack.JacketPath))
+                        return;
 
-                var sprite = LoadOrGetJacket(pack.JacketPath);
-                if (sprite != null)
-                    __result = sprite;
+                    var sprite = LoadOrGetJacket(pack.JacketPath);
+                    if (sprite != null)
+                        __result = sprite;
+                }
+                catch { }
             }
         }
     }
