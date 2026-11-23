@@ -27,14 +27,14 @@
 - **멀티 WebSocket을 `ConnectAsync`에서 막는 이유 (v0.3.2)**: 게임의 외부 주소는 `riselive`의 REST(:3000)·WS(:3011) 둘뿐이고(stringliteral 전수 검색), REST는 `NetworkManager.Send`로 모이지만 WS는 `MultiplayController`가 `ClientWebSocket`을 직접 연다. 오프라인 모드가 "통신 0"이 되려면 이 출구도 막아야 한다. 접속 시도 대신 완료된 Task만 돌려주므로 `OnConnected`는 오지 않고 멀티 화면은 연결 대기 상태로 남는다(그 화면의 실제 반응은 **미확인**)
 - 스텁 응답 표에 없는 `NetCommand`는 `{}`로 응답하되 `NoteUnmodeled`가 처음 한 번만 `[OfflineStub] 응답 형식 미확인 명령` 경고를 남긴다. 그 명령 직후 화면이 깨지면 `CaptureOnlineResponses`로 실제 응답을 캡처해 `BuildStubResponse`에 추가할 것
 - `NoteVisualPatches`의 노트 기준 위치는 `GetInstanceID()` 키에 `Parent`(parentLine 포인터)·`Split`을 같이 저장하고, 값이 달라지면 다시 잡는다(풀링 재사용 방어, v0.3.2). X/Y를 한 딕셔너리로 합쳐 프레임당 조회도 반으로 줄었다
-- `MaxScore` 스케일은 직전 스케일 결과(`_lastScaledScore`)와 같은 값이면 건너뛴다(같은 메서드가 또 불릴 때 중복 방지). 스테이지당 처음 5번 `[MaxScore] raw → scaled`를 로그에 남기므로, `MaxScore`를 1,000,000이 아닌 값으로 바꿔 한 판 돌린 뒤 값이 누적되는지 로그로 확인할 것
+- **`MaxScore`는 표시 직전 한 군데에서만 적용한다 (v0.3.2 재설계)**: 결과 화면이 점수를 찍는 `NumberRoller.RollCombo(StatType.Score, int value, float)` Prefix에서 `value`만 곱한다. **실기 로그(2026-11-23 16:35)로 확인한 경로**: `NumberRoller.RollCombo(Score, 1000000)`. `_stat`(원본)은 건드리지 않아 배율이 누적되지 않는다. `ArcadeResultUI.ApplyScoreCoroutine(int)`·`PlayBase.GetScoreAndAccuracy`는 같은 실기에서 **한 번도 불리지 않았고**, 값은 바꾸지 않고 `[미처리 경로]` 로그만 남긴다(다른 화면·모드가 쓰면 그때 훅 추가). 스테이지당 12줄 제한. **실기 확인 (2026-11-23 16:39)**: `MaxScore=2000000`에서 결과 화면 SCORE가 2000000으로 표시, 로그 `[MaxScore] … 표시값 1000000 → 2000000`, `[미처리 경로]` 로그 없음. 인게임 HUD 점수가 따로 있는지는 미확인
 - `config.txt`(SaveCustomKey)가 설정 원본이다. `ModConfig`(MelonPreferences)의 `OfflineMode`/`CustomEnabled`/`CustomChartOffsetMs`는 config.txt를 읽을 때마다 덮어써진다
 - 텍스트 파일(config.txt, info.txt, 차트)은 `Util.ReadAllLinesSmart`로 읽는다: BOM → 엄격 UTF-8 → CP949 → Shift-JIS → Latin1 순. EUC-KR로 저장한 info.txt 제목이 깨지지 않게 하려는 것
 - BMS 변환 분할(Split)은 고정 16이 아니라 노트·변속 위치를 정확히 표현하는 최소값(4,8,12,16,24,32,48,64,96 중)을 고른다. 셋잇단 양자화 오류를 없애고, 행×레인마다 Il2Cpp `Note` 객체를 만드는 비용을 줄이기 위함(실곡 `hwa2.bms`: 4800행 → 1200행)
 - 커스텀 곡 ID는 `990001`부터 경로 사전순으로 부여한다(README 구버전의 `HWA_0001` 표기는 오기). 폴더를 추가·삭제하면 뒤쪽 곡 ID가 밀린다
 
 ## 4. 핵심 훅 시그니처와 주입 파이프라인
-- 주입: version.dll(MelonLoader) → Mods\PIURiseCustom.dll → `OnInitializeMelon`에서 `SafePatcher.ApplyAll(HarmonyInstance)` (v0.3.2 기준 **62개 패치 클래스**. 실기 부팅 61/61 적용은 v0.3.1에서 확인, v0.3.2의 추가 1개는 빌드만 확인)
+- 주입: version.dll(MelonLoader) → Mods\PIURiseCustom.dll → `OnInitializeMelon`에서 `SafePatcher.ApplyAll(HarmonyInstance)` (v0.3.2 기준 **62개 패치 클래스**. 실기 부팅 62/62 적용 확인, 2026-11-23)
 - interop 네임스페이스: 전역 타입 `Il2Cpp.MainStage`, 네임스페이스 타입 `Il2CppPIUMobileStepDLL.PUMPPlayer` (확인)
 - 커스텀 곡 파이프라인 요약 (전체 표는 docs/hooks.md §4):
   1. `Mk2SongLoader.CacheSongTable/CacheArcadeSongTable` Prefix → `PIUDataBase.songTable`에 `Song` 주입
@@ -59,6 +59,9 @@
 - `StepLoader.LoadUserStep` 게임 내장 UCS 파서는 멀티블록(변속) 시 `pBlock[1..]`이 `null`이 되는 원본 버그 존재 → 자체 `CustomChartParsers`로 `Step_t` 직접 구성
 - `MainStage.PauseAllow` getter 패치만으로는 부분 채보 마지막 노트 이후 ESC 일시정지 해제 불가(IL2CPP가 `InGameUI.callMenu` 내부에 `get_PauseAllow`를 인라인함) → **`InGameUI.callMenu`를 직접 패치**해 호출 중 `SoloPlayer._showNoteEnd` 임시 해제할 것
 - 인게임 실시간 키 입력은 구식 `KeyInput.isButtonPress`가 아니라 Unity InputSystem 기반 **`GameInputManager.Instance`**(`keyTbl5k`/`keyTbl5kSub`/`keyTbl6k`/`keyTbl6kSub` + `GetButtonState`)에서 읽을 것. (v0.3.1에서 미사용 `KeyInput.Awake` 추적 훅 제거)
+- **MaxScore를 `CalcNewBestScore`/`ACCalcNewBestScore` Postfix에서 `_stat[0,13]`에 곱하기** → v0.3.0~v0.3.1 내내 전혀 적용되지 않았다(2026-11-23 실기: `MaxScore=2000000`인데 1,000,000 표시, v0.3.2 `[MaxScore]` 로그 0줄). 의사코드(REA)로 확인: 두 메서드는 `PlayerData.SelectedSongId/Level`로 저장된 기록을 조회해 **신기록인지 비교**할 뿐 점수를 쓰지 않고, 저장 흐름이라 `BlockSave`가 켜져 있으면 호출조차 되지 않는다. 점수 누적은 `JudgeStep_PostProcess` → `AddCount(bank, 13, 점수×factor)`(`_stat[bank,13]`·`_stat[3,13]`·`_statLocal[13]` 합산, 음수는 0으로 보정)이고, `factor`는 `1 + (노트값/…)×GameModifier+0x58`인 **보너스 배율**이지 1,000,000 정규화가 아니다. 그래서 `factor`를 곱하는 방식도 쓰지 않았다
+- **MaxScore를 `PlayBase.GetScoreAndAccuracy` Postfix에서 스케일** → v0.3.2 1차 시도, 이름과 달리 결과 화면이 이 메서드를 쓰지 않아 한 번도 호출되지 않았다(실기 `[MaxScore]` 로그에 없음). **의사코드·이름만 보고 "점수 출처"를 단정하지 말고, 먼저 로그만 남기는 훅으로 실제 호출 경로를 확인할 것**
+- `ScoreRoller.InitData(string)` Prefix로 표시 문자열을 다시 스케일하던 코드도 제거했다(다른 경로와 겹치면 이중 스케일, `MaxScore<1,000,000`이면 특히 위험)
 - `F9`(ON/OFF)·`F10`(재스캔) 단축키는 문서에만 있었고 **구현된 적이 없다**(v0.3.1 감사에서 확인, 문서에서 삭제). F10을 구현하려면 단순 `CustomPackManager.Scan()`으로는 안 된다: 곡 ID가 스캔 순서로 다시 매겨져 이미 주입된 `songTable` 항목과 어긋나고, 새 곡은 `Mk2SongLoader.CacheSongTable`을 다시 돌리기 전엔 목록에 안 나온다
 - 컴퓨터 제어로 인게임 플레이를 검증하려 할 때 다른 Claude 세션이 화면 제어를 쥐고 있으면 `request_access`가 거부된다 → 로그 기반 부팅 검증 + 오프라인 재현 스크립트로 대체했음
 
@@ -92,10 +95,11 @@ dotnet build "H:\source\repos\PUMP IT UP RISE-unity-il2cpp\mod\PIURiseSkeleton\P
 - **확인 (오프라인 재현)**: 새 BMS 분할 선택을 실곡 `hwa2.bms`(오브젝트 358개)에 재현 → Split=4, 위치 오차 0
 - **미확인 (v0.3.1 변경분)**: 선곡~플레이~결과 구간 재실기 — 특히 BMS Split=4 차트 실제 판정·스크롤, 오디오 바이트 캐시(프리뷰→본게임), 키뷰어 상태 변화 시에만 색 갱신. 다음 세션에서 커스텀 곡 1판으로 확인할 것
 - **미확인 (이전부터)**: `.ucs` 멀티블록(변속) 실제 차트 실기 검증
-- **확인 (2026-11-23, v0.3.2 빌드)**: 경고 0 / 오류 0, 패치 클래스 62개(수작업 집계). 새 훅·방어 코드는 **게임에서 실행해 본 적 없음**
-- **미확인 (v0.3.2 변경분)**: ① 멀티 메뉴 진입 시 `ConnectAsync` 차단 후 화면 반응(멈춤/팝업), ② `[OfflineStub] 응답 형식 미확인 명령` 경고가 실제로 어떤 명령에서 뜨는지, ③ `MaxScore≠1000000`일 때 `[MaxScore]` 로그
+- **확인 (2026-11-23 실기, v0.3.2)**: 부팅 `Patches=62 (실패 0)`, 오프라인 타이틀 → 선곡 → `.bms` 1판(Split=4, 1216행) → 결과 화면까지 정상, `MaxScore=2000000` 결과 화면 SCORE 2000000 표시. 빌드 경고 0 / 오류 0
+- **관찰 (원인 미조사)**: 같은 곡 `hwa2.bms`의 Perfect 수가 v0.3.0(4864행)에서는 744, v0.3.2(Split=4, 1216행)에서는 417이다. 분할 방식 변경으로 판정 수가 달라진 것인지(롱노트 헤드/테일 집계 등) 노트가 빠진 것인지 확인할 것
+- **미확인 (v0.3.2 변경분)**: ① 멀티 메뉴 진입 시 `ConnectAsync` 차단 후 화면 반응(멈춤/팝업), ② `[OfflineStub] 응답 형식 미확인 명령` 경고가 실제로 어떤 명령에서 뜨는지(이번 판 로그에는 없음), ③ 노트 풀링 방어(Sway/Chaos 켠 상태), ④ 인게임 HUD 점수 표시 여부
 - **잠재 위험 (코드 감사, v0.3.2에서 방어 추가했으나 실측 전)**:
   - 노트 풀링: `Parent`/`Split` 검증으로 재사용을 감지해 기준 위치를 다시 잡는다. 단 게임이 재사용 시 `localPosition.x`를 초기화하지 않으면 재캡처 값에 이전 흔들림이 섞일 수 있다
-  - `MaxScore`: `_lastScaledScore` 비교로 같은 값 재적용은 막지만, 게임이 점수를 누적식(`+=`)으로 갱신하면 여전히 배율이 겹칠 수 있다. 또 `ScoreRoller.InitData` Prefix는 값이 1,000,000 이하면 다시 스케일하므로 `MaxScore<1000000`이면 표시값이 이중 스케일될 가능성이 있다(`MaxScore=1000000` 기본값이면 무관)
+  - `MaxScore`: 결과 화면 외의 점수 표시(인게임 HUD 등)가 있으면 여전히 1,000,000 기준으로 보일 수 있다. 로그의 `[미처리 경로]` 줄이나 화면을 보고 해당 경로에 훅을 추가할 것
 
 ※ 디컴파일 코드·덤프·추출 리소스는 개인 PC 전용이며 공유하지 않는다.
