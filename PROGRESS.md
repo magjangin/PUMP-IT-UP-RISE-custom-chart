@@ -45,3 +45,4 @@
 4b. v0.3.3 실기: `NoteSway=1`로 곡 진입 → `[NoteVisual] … 붙였습니다` + 흔들림 정상, 다시 `NoteSway=0` → `… 뗐습니다` + 노트 정상
 5. (선택) `NoteVisualPatches` 풀링 방어·`MaxScore` 중복 방지는 v0.3.2에서 코드로 넣었으니 실기로 효과 확인 (AGENTS.md §7)
 6. (선택) `float[5]`(1, 0.7, 0.3, 0.1, 0)가 쓰이는 곳(`_scoreJudge` @0x164 호출부) 추적
+4c. **v0.3.4 (2026-11-23 클라우드 감사, 미빌드)**: 게임 PC에서 `.\tools\release.ps1`로 빌드(경고 0/오류 0) → 부팅 `[Patch] 60/60` → 커스텀 곡 1판. 확인 항목은 AGENTS.md §7 "미빌드·미실기 (v0.3.4)". 통과하면 `.\tools\release.ps1 -Publish`로 v0.3.4 게시

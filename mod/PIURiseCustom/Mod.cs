@@ -12,7 +12,7 @@ namespace PIURiseCustom
 {
     public class Mod : MelonMod
     {
-        public const string Version = "0.3.3";
+        public const string Version = "0.3.4";
 
         internal static MelonLogger.Instance Log;
         internal static HarmonyLib.Harmony PatchHarmony;
@@ -66,13 +66,20 @@ namespace PIURiseCustom
 
         private static void Postfix()
         {
-            Mod.ResetCounts();
-            InGameOverlayUI.ResetForNewStage();
-            NoteVisualPatches.ResetForNewStage();
-            NoteVisualPatches.LateUpdateHooks.Sync(Mod.PatchHarmony); // config 핫리로드 결과에 맞춰 매 노트 훅을 붙이거나 뗀다
-            GameplayOptionPatches.ResetMaxScoreTracking();
-            CustomMarathonPatches.OnCustomSongStarted(Util.CurrentSongId());
+            // 단계마다 격리: 하나가 예외를 던져도 나머지 초기화(특히 노트 훅 부착·마라톤 상태 리셋)는 진행한다
+            Step("판정 카운트", Mod.ResetCounts);
+            Step("오버레이", InGameOverlayUI.ResetForNewStage);
+            Step("노트 비주얼", NoteVisualPatches.ResetForNewStage);
+            Step("노트 훅 동기화", () => NoteVisualPatches.LateUpdateHooks.Sync(Mod.PatchHarmony)); // config 핫리로드 결과에 맞춰 매 노트 훅을 붙이거나 뗀다
+            Step("MaxScore", GameplayOptionPatches.ResetMaxScoreTracking);
+            Step("마라톤", () => CustomMarathonPatches.OnCustomSongStarted(Util.CurrentSongId()));
             Mod.Log.Msg("MainStage.Start — 인게임 시작");
+        }
+
+        private static void Step(string name, System.Action action)
+        {
+            try { action(); }
+            catch (System.Exception ex) { Mod.Log.Warning($"[MainStage.Start] {name} 초기화 오류: {ex.Message}"); }
         }
     }
 

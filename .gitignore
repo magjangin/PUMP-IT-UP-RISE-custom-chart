@@ -29,3 +29,6 @@ Thumbs.db
 *.log
 *.jsonl
 *.tmp
+
+# 릴리즈 산출물 (tools/release.ps1)
+dist/

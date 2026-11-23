@@ -98,8 +98,9 @@ namespace PIURiseCustom
             try
             {
                 if (_judgeRoot == null) return;
-                float maxMs = Mathf.Max(120f, _maxWindowMs);
-                float norm = Mathf.Clamp(deltaMs / maxMs, -1f, 1f);
+                // 판정·프레임마다 도는 경로라 Mathf(IL2CPP 호출) 대신 관리 코드 Math를 쓴다
+                float maxMs = Math.Max(120f, _maxWindowMs);
+                float norm = Math.Clamp(deltaMs / maxMs, -1f, 1f);
 
                 var t = _ticks[_tickHead];
                 _tickHead = (_tickHead + 1) % MaxTicks;
@@ -348,7 +349,7 @@ namespace PIURiseCustom
                         else
                         {
                             Color c = img.color;
-                            c.a = Mathf.Clamp01(1f - age / 2.5f);
+                            c.a = Math.Clamp(1f - age / 2.5f, 0f, 1f);
                             img.color = c;
                         }
                     }

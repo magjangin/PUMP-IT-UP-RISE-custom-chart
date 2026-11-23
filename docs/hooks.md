@@ -42,9 +42,9 @@ JUDGE 열거형: 0 Perfect, 1 Great, 2 Good, 3 Bad, 4 Miss (src_dummy\PIUMobileS
 | `SteamManager.CheckAllDLCStatus()` | 0x7DB090 | 시그니처만 | DLC 소유 확인 |
 | `SteamManager.IsDLCInstalled(uint appID)` | 0x7DBA90 | 시그니처만 | DLC 설치 확인 |
 
-## 4. PIURiseCustom v0.3.3 실제 패치 목록 (속성 기반 61개 + 동적 2개)
+## 4. PIURiseCustom v0.3.4 실제 패치 목록 (속성 기반 60개 + 동적 2개)
 
-v0.3.2는 63개(2026-11-23 실기 부팅 63/63). v0.3.3부터 노트 비주얼 `LateUpdate` 훅 2개는 `SafePatcher` 집계에서 빠지고, 비주얼 기능이 하나라도 켜졌을 때만 `MainStage.Start`에서 붙는다(`NoteVisualPatches.LateUpdateHooks.Sync`).
+v0.3.2는 63개(2026-11-23 실기 부팅 63/63), v0.3.3은 61개, v0.3.4는 로그 전용 `PlayBase.GetScoreAndAccuracy` 훅(값 형식 반환 → 박싱 크래시 위험, 호출 0회)을 빼서 60개. v0.3.3부터 노트 비주얼 `LateUpdate` 훅 2개는 `SafePatcher` 집계에서 빠지고, 비주얼 기능이 하나라도 켜졌을 때만 `MainStage.Start`에서 붙는다(`NoteVisualPatches.LateUpdateHooks.Sync`).
 
 RVA 대신 **이름**으로 걸린다. 게임 업데이트 후 `[Patch] … 실패` 로그에 나온 클래스 이름을 이 표에서 찾아 영향 기능을 판단한다.
 "관문"은 Prefix가 원본 실행 여부를 좌우하는 지점 — 여기서 실패·예외가 나면 해당 화면 자체가 깨질 수 있다.
@@ -61,12 +61,13 @@ RVA 대신 **이름**으로 걸린다. 게임 업데이트 후 `[Patch] … 실�
 | 자켓·커튼 | `SongDataCell.Init`, `MSListBox.UpdateDisplayContent`·`UpdateLevels`, `EyeCatchUI.UpdateSong`, `IngameSongInfoUI.OnShow`·`SetNumberImages`·`SetLevelType`·`SetInfoData`, `BGAPlayerLoader.SetInfoData`, `ResultDefaultGameInfo.SetData`, `SongListContent.GetEyecatchSprite`·`GetArcadeEyecatchSprite` | Prefix/Postfix | 기본 이미지·템플릿 난이도 표시 |
 | 멀티 방 생성 창 | `MultiStageCreateRoomPopup.SetSongInit` | Prefix(`ref songId`→공식 템플릿 곡, `__state`로 원래 ID 기억)+Postfix(제목·자켓 복원) | 방 생성 창 제목·자켓이 템플릿 곡으로 보임(오프라인 `DLCEntrys` 보강은 별도: `OfflineStubPatches.EnsureOfflineDlcEntries`) |
 | 오프라인 | `SteamManager.CheckTicket`, `NetworkManager.StartJwtCoroutine`·`SendHeartBeatRoutine`·`SendAuth`·`Send`, `MaintenanceManager.TitleCheck`·`MaintenanceCheck`·`AlramNetworkError`, `CommonUtil.SetPlayLogAtServer`, `NetworkManager.InitMultiCon`(v0.3.2, 멀티 접속 대상을 `127.0.0.1:1`로 교체 — `ConnectAsync` 직접 후킹은 크래시, `Task.Delay(-1)` 보류는 UI 먹통) | Prefix(관문) | **부팅 불가 또는 서버 접속 시도** — 업데이트 후 이 중 하나라도 실패하면 `OfflineMode=0`으로 두지 말고 먼저 고칠 것 |
-| 플레이 옵션 | `PUMPPlayer.JudgeNote`·`JudgeLine`·`DrawStep`·`JudgeStep_PostProcess`·`CalcNewBestScore`·`ACCalcNewBestScore`, `PlayBase.StartSong`, `PlayerData.SaveUserPlayResult`, `ScoreRoller.InitData` | Prefix/Postfix | AutoPlay/AllPerfect/BlockSave/MaxScore/판정바 해당 기능만 꺼짐 |
+| 플레이 옵션 | `PUMPPlayer.JudgeNote`·`JudgeLine`·`DrawStep`·`JudgeStep_PostProcess`(AutoPlay 키음), `PlayBase.StartSong`, `PlayerData.SaveUserPlayResult`, `NumberRoller.RollCombo(StatType,int,float)`(MaxScore), `ArcadeResultUI.ApplyScoreCoroutine`(로그 전용) | Prefix/Postfix | AutoPlay/AllPerfect/BlockSave/MaxScore/판정바 해당 기능만 꺼짐 |
 | 클리어 연출 유예 | `PlayBase.<CoShowNoMiss>d__N.MoveNext` (`TargetMethod`로 이름 검색) | Prefix | PERFECT GAME 연출이 곡 중간에 뜸 |
 | 일시정지 | `MainStage.PauseAllow`(getter), `InGameUI.callMenu` | Postfix / Prefix+Postfix | 부분 채보 후 ESC 불가 |
 | 노트 비주얼 | `SpliteScript.Init`(속성), `SpliteScript.LateUpdate`·`LongSpliteScript.LateUpdate`(동적, `AccessTools.DeclaredMethod`) | Postfix | Sway/Chaos/Sudden/Hidden/Fade/CustomNotes 꺼짐. 동적 훅 실패는 `[Patch]`가 아니라 `[NoteVisual] … 실패` 경고로 나온다 |
 | 마라톤 | `ResultUI.DoEscape`·`OnShow`·`OnHide` | Prefix/Postfix | 마라톤 꺼짐 |
-| 스테이지 수명 | `MainStage.Start`·`SaveResult`·`OnDisable`·`OnDestroy` | Prefix/Postfix | config 핫리로드·오버레이 정리 안 됨 |
+| 스테이지 수명 | `MainStage.Start`·`SaveResult`·`OnDisable`·`OnDestroy`, `PUMPPlayer.JudgeStep_PostProcess`(판정 집계) | Prefix/Postfix | config 핫리로드·오버레이 정리 안 됨 |
+| 온라인 결과 보류 | `NetworkManager.Send`(위 오프라인 행과 같은 훅, `OfflineMode=0`일 때) | Prefix | 커스텀 곡·AutoPlay·AllPerfect 결과가 서버로 전송될 수 있음 — 실패 시 온라인 플레이 금지 |
 
 ## 5. 게임 업데이트 후 점검 절차
 
@@ -74,7 +75,7 @@ RVA 대신 **이름**으로 걸린다. 게임 업데이트 후 `[Patch] … 실�
 2. 게임을 MelonLoader로 1회 실행 → `MelonLoader\Il2CppAssemblies\` 재생성 (모드는 일단 그대로 둬도 된다: 실패 패치만 꺼지고 부팅은 계속됨)
 3. `Latest.log`에서 확인:
    - `[Build] …` 경고 줄 (검증 빌드와 다름)
-   - `[Patch] Harmony 패치 N/61개 적용` — 실패 클래스 이름 목록
+   - `[Patch] Harmony 패치 N/60개 적용` — 실패 클래스 이름 목록
    - 비주얼 기능을 켠 곡에서 `[NoteVisual] … 찾지 못해` / `… 실패` 경고 (동적 훅)
 4. 실패 클래스를 §4 표에서 찾아 대상 메서드를 새 덤프(`il2cpp_dump`, ModdingSupportTool `search_reference`)에서 다시 찾는다. 이름이 바뀌었으면 패치 속성만 고치면 된다
 5. `dotnet build … -c Release` — interop 시그니처가 바뀐 메서드는 컴파일 오류로 드러난다 (interop 미생성이면 `CheckGameReferences`가 원인 메시지를 낸다)
