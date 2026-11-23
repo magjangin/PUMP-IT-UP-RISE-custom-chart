@@ -29,12 +29,12 @@
   - 청소: 미사용 `KeyInput.Awake` 훅·`TryGetAudioDurationSeconds`·`PackCount`·`IsMarathonBannerVisible`·`ClearJacketCache` 제거, 존재하지 않던 F9/F10 단축키 문서 삭제
   - 검증: 빌드 경고 0/오류 0, 실기 부팅 `[Patch] 61/61` + 오프라인 타이틀 진입 확인. 선곡~플레이 재실기는 다른 세션이 화면 제어 중이라 미실시
 
-- [완료·빌드만] 11. v0.3.2 오프라인 빈틈 보강 (2026-11-23) — OfflineStubPatches.cs(`MultiplayController.ConnectAsync` 차단, 미확인 NetCommand 1회 경고, set 계열 명시), NoteVisualPatches.cs(풀링 방어·딕셔너리 통합), GameplayOptionPatches.cs(MaxScore 중복 방지·로그), Mod.cs(0.3.2) — 외부 주소 전수 검색 결과 `riselive` REST·WS뿐. 빌드 경고 0/오류 0. **실기 미검증**
+- [완료·빌드만] 11. v0.3.2 오프라인 빈틈 보강 (2026-11-23) — OfflineStubPatches.cs(`NetworkManager.InitMultiCon` 차단 — 처음 `ConnectAsync`를 직접 후킹했다가 struct 인자 박싱으로 게임 크래시, 상위 메서드로 교체 → 실기 확인(멀티 메뉴 진입, 크래시 없음), 미확인 NetCommand 1회 경고, set 계열 명시), NoteVisualPatches.cs(풀링 방어·딕셔너리 통합), GameplayOptionPatches.cs(MaxScore 중복 방지·로그), Mod.cs(0.3.2) — 외부 주소 전수 검색 결과 `riselive` REST·WS뿐. 빌드 경고 0/오류 0. **실기 미검증**
 
 - [수정·빌드만] 11b. MaxScore 재설계 (2026-11-23) — GameplayOptionPatches.cs — 실기에서 `MaxScore=2000000`이 적용되지 않는 것을 발견. 원인: 쓰던 `CalcNewBestScore` 계열은 점수 계산이 아니라 신기록 비교(REA 의사코드로 확인). `GetScoreAndAccuracy` 1차 시도는 실기에서 호출되지 않아 실패 → 로그로 확인된 실제 경로 `NumberRoller.RollCombo(Score, int)` Prefix로 재교체(패치 수 62 유지, 로그 전용 훅 2개). **실기 확인 완료 (16:39)**: 결과 화면 SCORE 2000000, 로그 `1000000 → 2000000`
 
 ## 다음 세션 할 일
-0. v0.3.2 남은 실기: 멀티 메뉴 진입 시 반응(`ConnectAsync` 차단), 인게임 HUD 점수 유무. (`Patches=62`·`MaxScore`는 확인 완료)
+0. v0.3.2 남은 실기: 멀티 메뉴 안쪽 조작(방 만들기·빠른입장) 반응, 인게임 HUD 점수 유무. (`InitMultiCon` 차단·멀티 메뉴 진입 크래시 없음은 16:49 확인 완료) (`Patches=62`·`MaxScore`는 확인 완료)
 0b. ~~Perfect 수 744→417 차이 조사~~ **완료 (2026-11-23)**: 노트 누락 아님(탭 328+홀드 헤드 15=343 보존, 격자 밖·중복 0). 차이는 홀드 몸통 틱 판정이 Split에 따라 달라지기 때문. 홀드 틱의 정확한 공식은 미확인(AGENTS.md §7)
 1. v0.3.2로 커스텀 곡 1판(선곡 → 플레이 → 결과) 재실기 (v0.3.1 로그는 선곡·프리뷰까지만 있고 플레이 기록 없음) — BMS Split=4 판정·스크롤, 프리뷰→본게임 오디오 캐시, 키뷰어 확인
 2. `.ucs` 멀티블록(변속) 차트 실기 검증
