@@ -152,6 +152,38 @@ namespace PIURiseCustom
             }
         }
 
+        private static bool IsResultSubmission(NetCommand cmd)
+        {
+            switch (cmd)
+            {
+                case NetCommand.setRankResult:
+                case NetCommand.playLog:
+                case NetCommand.setHighlightClear:
+                case NetCommand.setBossClear:
+                case NetCommand.setWorldMaxMissionTry:
+                case NetCommand.setWorldMaxMissionClear:
+                case NetCommand.setBattlePointInfo:
+                case NetCommand.setDivisionInfo:
+                case NetCommand.updateDailyQuestProgress:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool ShouldWithholdResult(out string why)
+        {
+            why = null;
+            try
+            {
+                if (Util.IsCurrentSongCustom()) why = "커스텀 곡";
+                else if (SaveCustomConfig.AutoPlay) why = "AutoPlay";
+                else if (SaveCustomConfig.AllPerfect) why = "AllPerfect";
+            }
+            catch { why = "판정 실패(안전하게 보류)"; }
+            return why != null;
+        }
+
         private static readonly System.Collections.Generic.HashSet<NetCommand> _unmodeledSeen = new();
         private static readonly System.Collections.Generic.HashSet<NetCommand> _sendSeen = new();
 
@@ -279,6 +311,17 @@ namespace PIURiseCustom
                         if (command != NetCommand.getHighlightCurrency)
                             Mod.Log.Warning($"[OfflineStub] Send({command}) 콜백 처리 중 예외(무시): {ex.Message}");
                     }
+                    return false;
+                }
+
+                // 온라인 모드여도 커스텀 곡·오토플레이·올퍼펙트 플레이의 결과/기록 전송은 서버로 보내지 않는다.
+                // (커스텀 곡은 템플릿 공식 곡을 거쳐 시작하므로 결과가 공식 곡 기록이나 랭킹에 섞일 수 있다)
+                if (IsResultSubmission(command) && ShouldWithholdResult(out string why))
+                {
+                    if (FirstSeen(command))
+                        Mod.Log.Warning($"[OnlineGuard] Send({command}) 서버 전송 보류({why}) → 로컬 {{}} 응답");
+                    try { callback?.Invoke("{}"); }
+                    catch (Exception ex) { Mod.Log.Warning($"[OnlineGuard] Send({command}) 콜백 처리 중 예외(무시): {ex.Message}"); }
                     return false;
                 }
 

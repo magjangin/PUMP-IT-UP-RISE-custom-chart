@@ -30,5 +30,5 @@ Thumbs.db
 *.jsonl
 *.tmp
 
-# 릴리즈 zip (GitHub Release에 올리는 산출물)
+# 릴리즈 산출물 (tools/release.ps1)
 dist/

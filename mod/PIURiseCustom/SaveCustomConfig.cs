@@ -20,6 +20,7 @@ namespace PIURiseCustom
         public static string ConfigPath => Path.Combine(ConfigDir, "config.txt");
 
         private static DateTime _lastWriteUtc = DateTime.MinValue;
+        private static bool _loadedOnce;
 
         // ===== [기본 / 오프라인] =====
         public static bool OfflineMode { get; private set; } = true;
@@ -178,7 +179,6 @@ LaneCoverDebug=0
                 if (!force && writeUtc == _lastWriteUtc)
                     return;
 
-                _lastWriteUtc = writeUtc;
                 var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
                 foreach (string raw in Util.ReadAllLinesSmart(ConfigPath))
@@ -202,8 +202,10 @@ LaneCoverDebug=0
                 }
 
                 // [기본 / 오프라인]
-                if (map.TryGetValue("OfflineMode", out string v)) OfflineMode = ParseBool(v, OfflineMode);
-                if (map.TryGetValue("CustomEnabled", out v)) CustomEnabled = ParseBool(v, CustomEnabled);
+                // OfflineMode·CustomEnabled는 부팅 때만 적용한다. 곡 목록 주입과 서버 스텁(가짜 JWT)이 부팅 시점에 정해지므로
+                // 실행 중에 바꾸면 커스텀 곡이 목록에 남은 채 템플릿 우회가 꺼지거나, 오프라인 토큰으로 실제 서버에 접속하게 된다.
+                if (map.TryGetValue("OfflineMode", out string v)) OfflineMode = BootOnly("OfflineMode", ParseBool(v, OfflineMode), OfflineMode);
+                if (map.TryGetValue("CustomEnabled", out v)) CustomEnabled = BootOnly("CustomEnabled", ParseBool(v, CustomEnabled), CustomEnabled);
                 if (map.TryGetValue("CustomChartOffsetMs", out v)) CustomChartOffsetMs = ParseFloat(v, CustomChartOffsetMs);
 
                 // [플레이]
@@ -263,6 +265,10 @@ LaneCoverDebug=0
                 // [진단]
                 if (map.TryGetValue("LaneCoverDebug", out v)) LaneCoverDebug = ParseBool(v, LaneCoverDebug);
 
+                // 읽기에 성공한 뒤에만 수정 시각을 기록한다(저장 중 잠긴 파일을 읽다 실패하면 다음 곡에서 다시 읽음)
+                _lastWriteUtc = writeUtc;
+                _loadedOnce = true;
+
                 // 기존 ModConfig와 동기화
                 if (ModConfig.OfflineMode != null) ModConfig.OfflineMode.Value = OfflineMode;
                 if (ModConfig.CustomEnabled != null) ModConfig.CustomEnabled.Value = CustomEnabled;
@@ -277,6 +283,14 @@ LaneCoverDebug=0
             {
                 Mod.Log?.Warning($"[Config] 설정 파일 읽기 실패: {ex.Message}");
             }
+        }
+
+        private static bool BootOnly(string key, bool requested, bool current)
+        {
+            if (!_loadedOnce || requested == current)
+                return requested;
+            Mod.Log?.Warning($"[Config] {key}={(requested ? 1 : 0)} 변경은 게임을 다시 시작해야 적용됩니다(현재 {(current ? 1 : 0)} 유지)");
+            return current;
         }
 
         private static bool ParseBool(string raw, bool fallback)

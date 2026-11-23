@@ -44,7 +44,7 @@ namespace PIURiseCustom
                         {
                             float noteMs = div.msStart + processingPos.Line * div.msPerLine;
                             float deltaMs = __instance.msCurTime - noteMs;
-                            if (Mathf.Abs(deltaMs) <= 220f)
+                            if (Math.Abs(deltaMs) <= 220f) // Mathf.Abs는 IL2CPP 호출이라 판정마다 부르지 않는다
                                 InGameOverlayUI.RecordJudgment(deltaMs, SaveCustomConfig.AllPerfect ? 0 : Grade, __instance.mTiming);
                         }
                     }
@@ -214,15 +214,8 @@ namespace PIURiseCustom
             private static void Prefix(int score) => LogScorePath($"[미처리 경로] ArcadeResultUI.ApplyScoreCoroutine(score={score})");
         }
 
-        [HarmonyPatch(typeof(PlayBase), nameof(PlayBase.GetScoreAndAccuracy))]
-        internal static class PlayBase_GetScoreAndAccuracy_Log_Patch
-        {
-            private static void Postfix(int enLv, Il2CppSystem.ValueTuple<int, float> __result)
-            {
-                try { LogScorePath($"[미처리 경로] PlayBase.GetScoreAndAccuracy(enLv={enLv}) → 점수 {__result.Item1}, 정확도 {__result.Item2:0.####}"); }
-                catch { }
-            }
-        }
+        // PlayBase.GetScoreAndAccuracy 로그 훅은 v0.3.4에서 제거했다: 실기에서 한 번도 불리지 않았고,
+        // 반환형이 값 형식(ValueTuple<int,float>)이라 ConnectAsync(CancellationToken) 크래시와 같은 박싱 위험이 있다(AGENTS.md §5).
 
         // 점수 경로 로그는 스테이지당 처음 12줄만 남긴다(프레임마다 불리는 경로여도 로그가 넘치지 않게).
         private static int _scorePathLogCount;
