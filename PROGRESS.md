@@ -37,9 +37,10 @@
 - [수정·빌드] 13. v0.3.4 전체 감사 (2026-11-23) — 전 파일 — 버그: 마라톤 전환 플래그 고착(공식 곡 결과창 ESC 막힘), 프리뷰/인게임 BGA `VideoPlayer` 핸들러 누적. 내성: 오프라인 패치 실패 오류 승격·기능 그룹 집계(SafePatcher), `Mod.OnUpdate` 서브시스템 격리, GAMESTART·IngameSongInfoUI.OnShow Prefix 격리, 노트 비주얼 훅 반쯤 붙음 롤백, 스켈레톤 `CheckGameReferences`. 성능: 판정바 틱 활성 상태 관리 쪽 기억, 모양 스프라이트 `SetPixels32` 일괄 생성, 오버레이·마라톤 꺼짐 시 조기 반환. 문서: hooks.md 플레이 옵션 행의 제거된 훅(`CalcNewBestScore`·`ScoreRoller.InitData`) 정정, 방 생성 창 주석의 원인 오기 정정. 빌드 경고 0/오류 0, 실기 미확인
 - [통합·빌드] 14. v0.3.5 (2026-11-23) — 클라우드 감사 초안 PR #9(같은 날 v0.3.4로 작성, 미빌드)를 릴리즈된 v0.3.4 위에 병합. 중복(프리뷰 핸들러·오버레이 Math 치환)은 v0.3.4 쪽 유지, 고유분(BMS 03/08 토큰 길이·탭 헤더·끝 없는 홀드·LNTYPE 1·`#LNOBJ`, `[OnlineGuard]`, config 부팅 전용·읽기 성공 후 시각 기록, `_catalogIds`, `_pendingCustomPack` 1회 사용, `GetScoreAndAccuracy` 훅 제거로 60개, 반환값 Postfix·MainStage.Start 단계 격리, `tools/release.ps1`)은 채택. 빌드 경고 0/오류 0, 실기 미확인
 - [완료·부팅 실기] 15. v0.3.6 (2026-11-24) — SafePatcher(사전 JIT 점검: 패치 클래스는 실패 시 미적용, 도우미는 경고), CustomPackManager(`SongIdRegistry` → `SaveCustomKey/song_ids.txt`), SaveCustomConfig(템플릿 기본값 깔기·모르는 키 알림), CustomChartParsers(`#LNOBJ` 짝 없는 끝 무시), GameplayOptionPatches(AutoPlay 키음 곡당 1회 조회), README 문제 해결 표. 실기 부팅: 60/60, JIT 352개 통과, ID 990001 유지
+- [수정·빌드] 16. v0.3.7 (2026-11-24) — CustomChartParsers: 표준 BMS 롱노트(LNTYPE 1 `5x` 채널, `#LNOBJ`) 로직 제거(사용자가 쓰지 않음, 키음 이름 방식만 유지)
 
 ## 다음 세션 할 일
-4c. v0.3.6/v0.3.5 실기: 부팅 `[Patch] 60/60` → 커스텀 곡 1판. v0.3.4분(판정바 모양 1/2, 선곡 프리뷰 영상 여러 번 오가기, 마라톤 곡 도중 이탈 → 공식 곡 결과창 ESC)과 v0.3.5분(LNTYPE 1/`#LNOBJ` 롱노트, 3자리 `#WAV` 차트 BPM, `OfflineMode=0`의 `[OnlineGuard]`) 항목은 AGENTS.md §7
+4c. v0.3.7/v0.3.6/v0.3.5 실기: 부팅 `[Patch] 60/60` → 커스텀 곡 1판. v0.3.4분(판정바 모양 1/2, 선곡 프리뷰 영상 여러 번 오가기, 마라톤 곡 도중 이탈 → 공식 곡 결과창 ESC)과 v0.3.5분(키음 이름 롱노트, 3자리 `#WAV` 차트 BPM, `OfflineMode=0`의 `[OnlineGuard]`) 항목은 AGENTS.md §7
 0. v0.3.2 남은 실기: 인게임 HUD 점수 유무, 방 생성 창의 커스텀 곡 제목·자켓 표시, 멀티 방 목록 새로고침 등 나머지 조작. (`Patches=63`·멀티 메뉴 진입·방 생성/입장/빠른입장 차단·MaxScore는 확인 완료)
 0b. ~~Perfect 수 744→417 차이 조사~~ **완료 (2026-11-23)**: 노트 누락 아님(탭 328+홀드 헤드 15=343 보존, 격자 밖·중복 0). 차이는 홀드 몸통 틱 판정이 Split에 따라 달라지기 때문. 홀드 틱의 정확한 공식은 미확인(AGENTS.md §7)
 1. v0.3.2로 커스텀 곡 1판(선곡 → 플레이 → 결과) 재실기 (v0.3.1 로그는 선곡·프리뷰까지만 있고 플레이 기록 없음) — BMS Split=4 판정·스크롤, 프리뷰→본게임 오디오 캐시, 키뷰어 확인
