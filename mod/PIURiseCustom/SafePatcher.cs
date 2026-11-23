@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using HarmonyLib;
 using MelonLoader.Utils;
@@ -38,10 +40,17 @@ namespace PIURiseCustom
             var failedByGroup = new SortedDictionary<string, int>(StringComparer.Ordinal);
             int offlineFailed = 0;
 
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            int preparedMethods = 0;
+
             foreach (var type in patchTypes)
             {
                 try
                 {
+                    // 패치 본문을 걸기 전에 미리 JIT한다(v0.3.6). 게임 업데이트로 interop에서 필드·메서드가 사라지면
+                    // 예전엔 그 패치가 처음 불릴 때 MissingFieldException 등이 나고, Il2CppInterop 트램펄린이 예외를 삼켜
+                    // Prefix라면 원본 메서드까지 조용히 건너뛰었다. 여기서 실패하면 패치를 아예 걸지 않아 원본이 그대로 돈다.
+                    preparedMethods += PrecompileType(type);
                     harmony.CreateClassProcessor(type).Patch();
                     AppliedCount++;
                 }
@@ -53,9 +62,7 @@ namespace PIURiseCustom
                     failedByGroup[group] = failedByGroup.TryGetValue(group, out int n) ? n + 1 : 1;
                     if (type.DeclaringType == typeof(OfflineStubPatches)) offlineFailed++;
 
-                    var root = ex;
-                    while (root.InnerException != null) root = root.InnerException;
-                    Mod.Log.Warning($"[Patch] 적용 실패(해당 기능만 비활성): {type.FullName} — {root.GetType().Name}: {root.Message}");
+                    Mod.Log.Warning($"[Patch] 적용 실패(해당 기능만 비활성): {type.FullName} — {DescribeRoot(ex)}");
                 }
             }
 
@@ -74,6 +81,81 @@ namespace PIURiseCustom
             if (offlineFailed > 0 && SaveCustomConfig.OfflineMode)
                 Mod.Log.Error($"[Patch] 오프라인 스텁 패치 {offlineFailed}개 적용 실패 — OfflineMode=1이어도 일부 통신이 실제 서버로 나갈 수 있습니다. " +
                               "고치기 전에는 온라인 계정으로 플레이하지 마세요 (docs/hooks.md §5-6).");
+
+            // 패치가 부르는 도우미(파서·오버레이·스텁 응답 등)도 같은 방식으로 미리 JIT한다.
+            // 실패해도 이미 건 패치는 그대로 두되(도우미 호출부는 대부분 try로 감싸 있음) 어떤 기능이 깨질지 부팅 로그에 남긴다.
+            // 덤으로 첫 판정·첫 곡 진입 때 몰리던 JIT 지연도 부팅 시간으로 옮겨진다.
+            var helperFailures = new List<string>();
+            bool offlineHelperFailed = false;
+            var patchTypeSet = new HashSet<Type>(patchTypes);
+            foreach (var type in AccessTools.GetTypesFromAssembly(typeof(SafePatcher).Assembly))
+            {
+                if (type.IsNested || patchTypeSet.Contains(type))
+                    continue; // 중첩 타입은 바깥 타입에서 함께 처리, 패치 클래스는 위에서 처리
+                try
+                {
+                    preparedMethods += PrecompileType(type, patchTypeSet);
+                }
+                catch (Exception ex)
+                {
+                    helperFailures.Add($"{type.Name}: {DescribeRoot(ex)}");
+                    if (type == typeof(OfflineStubPatches)) offlineHelperFailed = true;
+                }
+            }
+            sw.Stop();
+
+            if (helperFailures.Count == 0)
+                Mod.Log.Msg($"[Patch] 사전 JIT 점검 통과 — 메서드 {preparedMethods}개 (패치 적용 포함 {sw.ElapsedMilliseconds}ms)");
+            else
+                Mod.Log.Warning($"[Patch] 사전 JIT 점검에서 도우미 {helperFailures.Count}곳이 게임 interop과 맞지 않습니다(해당 기능 오동작 가능): " +
+                                string.Join(" | ", helperFailures));
+            if (offlineHelperFailed && SaveCustomConfig.OfflineMode)
+                Mod.Log.Error("[Patch] 오프라인 스텁 도우미가 게임 interop과 맞지 않습니다 — 고치기 전에는 온라인 계정으로 플레이하지 마세요.");
+        }
+
+        /// <summary>
+        /// 타입(과 그 안의 람다·중첩 타입)의 메서드를 전부 JIT해, 게임 업데이트로 사라진 interop 멤버 참조를 지금 드러낸다.
+        /// 첫 실패에서 예외를 던진다. 제네릭 정의·추상·대리자 타입처럼 JIT할 본문이 없는 것은 건너뛴다.
+        /// </summary>
+        private static int PrecompileType(Type type, HashSet<Type> skip = null)
+        {
+            if (type.ContainsGenericParameters || typeof(Delegate).IsAssignableFrom(type) || type.IsInterface)
+                return 0;
+
+            int count = 0;
+            const BindingFlags all = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance | BindingFlags.DeclaredOnly;
+            foreach (var m in type.GetMethods(all).Cast<MethodBase>().Concat(type.GetConstructors(all)))
+            {
+                if (m.IsAbstract || m.ContainsGenericParameters)
+                    continue;
+                var impl = m.GetMethodImplementationFlags();
+                if ((impl & (MethodImplAttributes.InternalCall | MethodImplAttributes.Runtime)) != 0)
+                    continue;
+                try
+                {
+                    RuntimeHelpers.PrepareMethod(m.MethodHandle);
+                }
+                catch (Exception ex)
+                {
+                    throw new InvalidOperationException($"{type.Name}.{m.Name} JIT 실패 — {DescribeRoot(ex)}", ex);
+                }
+                count++;
+            }
+
+            foreach (var nested in type.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic))
+            {
+                if (skip != null && skip.Contains(nested))
+                    continue;
+                count += PrecompileType(nested, skip);
+            }
+            return count;
+        }
+
+        private static string DescribeRoot(Exception ex)
+        {
+            var root = ex;
+            while (root.InnerException != null) root = root.InnerException;
+            return root == ex ? $"{ex.GetType().Name}: {ex.Message}" : $"{ex.Message} ({root.GetType().Name})";
         }
 
         /// <summary>

@@ -152,7 +152,11 @@ namespace PIURiseCustom
                 try
                 {
                     var am = AudioManager.Instance;
-                    string key = ResolveNoteSfxKey(am);
+                    // 키음 이름은 곡마다 한 번만 찾는다(v0.3.6). 예전엔 판정마다 장착 스킨 조회 + IL2CPP 사전 ContainsKey 2~3회를 반복했다.
+                    // 못 찾았으면(버퍼가 아직 안 올라옴) 다음 판정에서 다시 찾는다.
+                    string key = _stageNoteSfxKey;
+                    if (string.IsNullOrEmpty(key))
+                        key = _stageNoteSfxKey = ResolveNoteSfxKey(am);
                     if (am != null && !string.IsNullOrEmpty(key))
                     {
                         _lastNoteSfxTime = now;
@@ -220,7 +224,14 @@ namespace PIURiseCustom
         // 점수 경로 로그는 스테이지당 처음 12줄만 남긴다(프레임마다 불리는 경로여도 로그가 넘치지 않게).
         private static int _scorePathLogCount;
 
-        internal static void ResetMaxScoreTracking() => _scorePathLogCount = 0;
+        // 곡이 바뀌면 장착 키음 스킨이 바뀌었을 수 있으므로 다시 찾게 한다
+        private static string _stageNoteSfxKey;
+
+        internal static void ResetForNewStage()
+        {
+            _scorePathLogCount = 0;
+            _stageNoteSfxKey = null;
+        }
 
         private static void LogScorePath(string msg)
         {

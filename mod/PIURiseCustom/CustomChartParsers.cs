@@ -366,6 +366,7 @@ namespace PIURiseCustom
             var lastTapRow = new int[laneCount];
             Array.Fill(lastTapRow, -1);
             int orphanHolds = 0;
+            int orphanLnObjEnds = 0;
 
             void PlaceHold(int ln, int s, int e)
             {
@@ -435,10 +436,14 @@ namespace PIURiseCustom
                     }
                     lastTapRow[n.lane] = -1;
                 }
-                else if (lnObjIds.Contains(n.id) && lastTapRow[n.lane] >= 0 && grid[lastTapRow[n.lane], n.lane] == 'X')
+                else if (lnObjIds.Contains(n.id))
                 {
-                    // #LNOBJ: 같은 레인의 직전 단타를 롱노트 머리로 바꾼다
-                    PlaceHold(n.lane, lastTapRow[n.lane], row);
+                    // #LNOBJ: 같은 레인의 직전 단타를 롱노트 머리로 바꾼다.
+                    // 머리가 없으면(직전이 이미 롱노트였거나 레인 첫 오브젝트) 끝 표식만 버린다 — LNOBJ는 그 자체로 노트가 아니다(v0.3.6, 예전엔 단타가 하나 더 생겼다)
+                    if (lastTapRow[n.lane] >= 0 && grid[lastTapRow[n.lane], n.lane] == 'X')
+                        PlaceHold(n.lane, lastTapRow[n.lane], row);
+                    else
+                        orphanLnObjEnds++;
                     lastTapRow[n.lane] = -1;
                 }
                 else
@@ -458,6 +463,8 @@ namespace PIURiseCustom
             }
             if (orphanHolds > 0)
                 Mod.Log?.Warning($"[BMS Parser] '{Path.GetFileName(path)}' 끝(홀드 끝 키음·5x 채널 짝)이 없는 롱노트 시작 {orphanHolds}개 → 단타로 배치");
+            if (orphanLnObjEnds > 0)
+                Mod.Log?.Warning($"[BMS Parser] '{Path.GetFileName(path)}' 앞에 단타가 없는 #LNOBJ 끝 표식 {orphanLnObjEnds}개 → 무시");
 
             // BPM 변경 지점을 행(row) 기준으로 정렬하여 블록 분할
             var bpmEvents = new SortedDictionary<int, double>();

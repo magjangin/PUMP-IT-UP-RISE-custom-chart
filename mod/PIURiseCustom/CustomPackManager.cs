@@ -92,8 +92,8 @@ namespace PIURiseCustom
             if (!Directory.Exists(root))
                 return;
 
-            int nextId = 1;
             int failed = 0;
+            var ids = SongIdRegistry.Load(root);
 
             // 폴더 하나가 깨져 있어도(권한·잠금·이상한 파일) 나머지 곡은 계속 등록한다.
             // 여기서 예외가 새면 OnInitializeMelon이 실패해 모드 전체가 꺼진다.
@@ -101,7 +101,8 @@ namespace PIURiseCustom
             {
                 try
                 {
-                    var pack = BuildPack(dir, folderName, albumName, files, ref nextId);
+                    string relKey = SongIdRegistry.RelativeKey(root, dir);
+                    var pack = BuildPack(dir, folderName, albumName, files, () => ids.GetOrAssign(relKey));
                     RegisterPack(pack, isCatalogSong: !catalogUnlessOverride || !pack.IsOverrideSlot);
                 }
                 catch (Exception ex)
@@ -139,6 +140,8 @@ namespace PIURiseCustom
 
             if (failed > 0)
                 Mod.Log?.Warning($"[hwa] 읽기 실패로 건너뛴 곡 폴더 {failed}개");
+
+            ids.SaveIfChanged();
 
             Mod.Log?.Msg($"[hwa] 스캔 완료: {root} — 목록 주입 곡 {_catalogSongs.Count}개, 전체 등록 팩 {_byFolderKey.Count}개");
         }
@@ -216,7 +219,7 @@ namespace PIURiseCustom
         }
 
         // 디렉터리 목록은 Scan에서 한 번만 읽어 넘긴다 (예전엔 IsSongFolder/BuildPack이 폴더마다 두 번 읽었음)
-        private static CustomPack BuildPack(string dir, string folderName, string albumName, string[] files, ref int nextId)
+        private static CustomPack BuildPack(string dir, string folderName, string albumName, string[] files, Func<string> nextSongId)
         {
             string chartPath = FindFirstByExt(files, ChartExts);
             string bgmPath = FindBgm(files);
@@ -228,7 +231,7 @@ namespace PIURiseCustom
 
             var pack = new CustomPack
             {
-                SongId = (990000 + nextId++).ToString(),
+                SongId = nextSongId(),
                 FolderPath = dir,
                 FolderName = folderName,
                 AlbumName = albumName,
@@ -615,6 +618,92 @@ namespace PIURiseCustom
                 return globalOverride;
 
             return null;
+        }
+    }
+    /// <summary>
+    /// 커스텀 곡 ID(990001…)를 곡 폴더별로 기억하는 표 — SaveCustomKey/song_ids.txt (v0.3.6).
+    /// 예전엔 스캔할 때마다 경로 사전순으로 990001부터 다시 매겨서, hwa/에 폴더를 끼워 넣거나 지우면 뒤쪽 곡 ID가 전부 밀렸다
+    /// (게임의 즐겨찾기 등 곡 ID 기반 로컬 데이터가 다른 곡을 가리킴). 이제 한 번 받은 ID는 폴더가 그대로인 한 바뀌지 않는다.
+    /// - 표가 없는 첫 실행은 예전과 똑같이 스캔 순서대로 990001부터 매긴다(기존 설치와 같은 번호 → 호환).
+    /// - 새 폴더는 지금까지 쓴 가장 큰 번호 다음을 받는다. 지운 폴더의 번호는 표에 남겨 두고 다시 쓰지 않는다.
+    /// - 폴더 이름을 바꾸면 새 곡으로 취급되어 새 번호를 받는다.
+    /// - 표를 읽거나 쓰지 못해도 스캔은 계속된다(그 실행에서는 번호가 저장되지 않을 뿐).
+    /// </summary>
+    internal sealed class SongIdRegistry
+    {
+        private const int BaseId = 990000;
+        private static string FilePath => Path.Combine(SaveCustomConfig.ConfigDir, "song_ids.txt");
+
+        private readonly Dictionary<string, int> _byKey = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<int> _usedThisScan = new();
+        private int _maxId = BaseId;
+        private bool _changed;
+
+        public static string RelativeKey(string root, string dir)
+        {
+            string rel = Path.GetRelativePath(root, dir).Replace(Path.DirectorySeparatorChar, '/');
+            return string.IsNullOrEmpty(rel) ? "." : rel;
+        }
+
+        public static SongIdRegistry Load(string root)
+        {
+            var reg = new SongIdRegistry();
+            try
+            {
+                if (!File.Exists(FilePath))
+                    return reg;
+                foreach (string raw in File.ReadAllLines(FilePath, Encoding.UTF8))
+                {
+                    string line = raw.Trim();
+                    if (line.Length == 0 || line.StartsWith("#")) continue;
+                    int eq = line.IndexOf('=');
+                    if (eq <= 0) continue;
+                    if (!int.TryParse(line.Substring(0, eq).Trim(), out int id) || id <= BaseId) continue;
+                    string key = line.Substring(eq + 1).Trim();
+                    if (key.Length == 0 || reg._byKey.ContainsKey(key)) continue;
+                    reg._byKey[key] = id;
+                    if (id > reg._maxId) reg._maxId = id;
+                }
+            }
+            catch (Exception ex)
+            {
+                Mod.Log?.Warning($"[hwa] 곡 ID 표 읽기 실패({FilePath}) — 이번 실행은 새로 매깁니다: {ex.Message}");
+            }
+            return reg;
+        }
+
+        public string GetOrAssign(string key)
+        {
+            // 손으로 고친 표에서 두 폴더가 같은 번호를 가리키면 뒤쪽 폴더에 새 번호를 준다
+            if (_byKey.TryGetValue(key, out int id) && _usedThisScan.Add(id))
+                return id.ToString();
+
+            id = ++_maxId;
+            _byKey[key] = id;
+            _usedThisScan.Add(id);
+            _changed = true;
+            return id.ToString();
+        }
+
+        public void SaveIfChanged()
+        {
+            if (!_changed) return;
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(FilePath));
+                var sb = new StringBuilder();
+                sb.AppendLine("# PIURiseCustom 커스텀 곡 ID 표 (자동 생성). 곡 ID=hwa 기준 폴더 경로");
+                sb.AppendLine("# 지운 폴더의 번호도 남겨 두어 다시 쓰지 않습니다. 지우면 다음 실행 때 스캔 순서대로 다시 매깁니다.");
+                foreach (var kv in _byKey.OrderBy(kv => kv.Value))
+                    sb.Append(kv.Value).Append('=').AppendLine(kv.Key);
+                string tmp = FilePath + ".tmp";
+                File.WriteAllText(tmp, sb.ToString(), new UTF8Encoding(false));
+                File.Move(tmp, FilePath, overwrite: true);
+            }
+            catch (Exception ex)
+            {
+                Mod.Log?.Warning($"[hwa] 곡 ID 표 저장 실패({FilePath}) — 다음 실행 때 번호가 달라질 수 있습니다: {ex.Message}");
+            }
         }
     }
 }
