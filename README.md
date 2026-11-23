@@ -2,7 +2,7 @@
 
 **PUMP IT UP RISE** (Steam / Unity 2022.3 IL2CPP)용 MelonLoader 기반 **커스텀 차트 · 미디어 주입 · 오프라인 모드** 통합 프로젝트입니다.
 
-- **현재 버전:** `v0.3.6`
+- **현재 버전:** `v0.3.7`
 - **제작자:** 화영왕 (`magjangin`)
 - **대상 게임:** PUMP IT UP RISE (Steam AppID `2756930`, Build `26399668` 기준 실기 검증)
 - **로더:** MelonLoader `0.7.3` (`net6.0` / IL2CPP)
@@ -18,7 +18,7 @@
 
 ### 2. 자체 차트 파서 (`.ucs` / `.bms` / `.bme` / `.bml`)
 - 게임 내장 `StepLoader.LoadUserStep`의 멀티블록(변속) 버그를 우회하여 `PIUMobileStepDLL.Step_t` 구조를 직접 구성합니다.
-- `.ucs`(5/10레인) 및 5키 `.bms`/`.bme`/`.bml`(채널 `16 11 12 13 14` → ↙ ↖ ◎ ↗ ↘), 롱노트(키음 이름 `holdstart`/`홀드시작` 등으로 페어링, LNTYPE 1 채널 `56 51 52 53 54`, `#LNOBJ`), 변속을 지원합니다. 끝이 없는 롱노트 시작은 단타로 배치하고 경고합니다.
+- `.ucs`(5/10레인) 및 5키 `.bms`/`.bme`/`.bml`(채널 `16 11 12 13 14` → ↙ ↖ ◎ ↗ ↘), 롱노트(`#WAV` 키음 이름 `holdstart`/`홀드시작` 등으로 시작·끝 페어링), 변속을 지원합니다. 표준 BMS 롱노트(LNTYPE 1의 `5x` 채널, `#LNOBJ`)는 지원하지 않습니다. 끝이 없는 롱노트 시작은 단타로 배치하고 경고합니다.
 - BMS는 노트 위치를 정확히 표현하는 최소 분할을 자동으로 골라 셋잇단(12·24분 등)도 어긋나지 않게 변환합니다.
 - `info.txt`·차트·`config.txt`는 UTF-8 / EUC-KR(CP949) / Shift-JIS를 자동 판별해 읽습니다.
 
@@ -117,7 +117,7 @@ dotnet build "mod/PIURiseCustom/PIURiseCustom.csproj" -c Release -p:GamePath="C:
 | `[Config] 이 모드가 쓰지 않는 키 … 무시합니다` | `config.txt`에 오타 또는 다른 게임 전용 키 | 오타면 고치기. Sixtar Gate 공용 설정이면 무시해도 됨 |
 | `[Config] OfflineMode=… 변경은 게임을 다시 시작해야` | 실행 중에 바꾼 값은 다음 실행부터 적용 | 게임 재시작 |
 | `[hwa] 곡 폴더 건너뜀` | 그 폴더를 읽지 못함(권한·잠금 등) | 폴더·파일 확인 |
-| `[BMS Parser] … 단타로 배치` / `… 무시` | 짝이 안 맞는 롱노트 표식 | 차트의 홀드 시작/끝 키음·`#LNOBJ` 확인 |
+| `[BMS Parser] … 단타로 배치` | 홀드 끝 키음이 없는 롱노트 시작 | 차트의 홀드 시작/끝 키음 짝 확인 |
 | CUSTOM 탭이 안 보임 | `hwa/`에 인식된 곡이 없음 | 곡 폴더에 차트·음원·이미지 중 하나가 있는지 확인 |
 
 - `config.txt`에서 줄을 지우면 그 항목은 다음 곡부터 기본값으로 돌아갑니다(v0.3.6).
@@ -130,7 +130,7 @@ dotnet build "mod/PIURiseCustom/PIURiseCustom.csproj" -c Release -p:GamePath="C:
 ```text
 .
 ├─ mod/
-│  ├─ PIURiseCustom/      # 통합 커스텀 차트 · 오프라인 주력 모드 (v0.3.6)
+│  ├─ PIURiseCustom/      # 통합 커스텀 차트 · 오프라인 주력 모드 (v0.3.7)
 │  └─ PIURiseSkeleton/    # 읽기 전용 판정 관찰용 최소 스켈레톤 모드 (PIURiseCustom과 함께 설치하지 말 것)
 ├─ docs/
 │  ├─ hooks.md            # 후킹 타깃, 전체 패치 목록, 업데이트 점검 절차

@@ -43,7 +43,7 @@
 - **`OfflineMode`·`CustomEnabled`는 부팅 때만 적용 (v0.3.5)**: 곡 주입(`CacheSongTable`)과 가짜 JWT가 부팅 시점에 정해진다. 실행 중 `CustomEnabled=0`이면 목록에 남은 커스텀 곡(990001…)이 템플릿 우회 없이 `GAMESTART`로 가 시작에 실패하고, `OfflineMode` 전환은 오프라인 토큰으로 실제 서버에 접속한다. 핫리로드 때 값이 바뀌면 `[Config] … 다시 시작해야` 경고만 남긴다
 - `config.txt`(SaveCustomKey)가 설정 원본이다. `ModConfig`(MelonPreferences)의 `OfflineMode`/`CustomEnabled`/`CustomChartOffsetMs`는 config.txt를 읽을 때마다 덮어써진다
 - 텍스트 파일(config.txt, info.txt, 차트)은 `Util.ReadAllLinesSmart`로 읽는다: BOM → 엄격 UTF-8 → CP949 → Shift-JIS → Latin1 순. EUC-KR로 저장한 info.txt 제목이 깨지지 않게 하려는 것
-- BMS 롱노트는 세 방식을 받는다 (v0.3.5): 키음 이름(`holdstart`/`홀드시작` …), LNTYPE 1 채널(`56 51 52 53 54`, 같은 채널의 두 오브젝트가 시작·끝), `#LNOBJ`(직전 단타를 머리로). 끝이 없는 시작은 단타로 남기고 경고한다(예전엔 노트가 사라졌다). 토큰 길이는 채널 `03`은 항상 2자리, `08`은 `#BPMxx` 자릿수, 나머지는 `#WAVxx` 자릿수
+- **BMS 롱노트는 키음 이름 방식 하나만 쓴다**: `#WAVxx`의 파일 이름(`holdstart`/`홀드시작`/`longstart`/`lnstart` ↔ `holdend`/`홀드끝` …)으로 시작·끝을 짝짓는다(사용자 차트 `hwa2.bms`가 이 방식, 15쌍). **표준 BMS 롱노트(LNTYPE 1의 `5x` 채널, `#LNOBJ`)는 사용자가 쓰지 않으므로 넣지 않는다** — v0.3.5에서 클라우드 PR #9로 들어갔다가 v0.3.7에서 사용자 요청으로 뺐다. 다시 넣지 말 것(`5x` 채널은 무시, `#LNOBJ` 끝 표식은 단타로 읽힘). 끝이 없는 시작은 단타로 남기고 경고한다(v0.3.5~, 예전엔 노트가 사라졌다). 토큰 길이는 채널 `03`은 항상 2자리, `08`은 `#BPMxx` 자릿수, 나머지는 `#WAVxx` 자릿수
 - BMS 변환 분할(Split)은 고정 16이 아니라 노트·변속 위치를 정확히 표현하는 최소값(4,8,12,16,24,32,48,64,96 중)을 고른다. 셋잇단 양자화 오류를 없애고, 행×레인마다 Il2Cpp `Note` 객체를 만드는 비용을 줄이기 위함(실곡 `hwa2.bms`: 4800행 → 1200행)
 - 커스텀 곡 ID는 `990001`부터 부여한다(README 구버전의 `HWA_0001` 표기는 오기). v0.3.5까지는 스캔마다 경로 사전순으로 다시 매겨 폴더를 추가·삭제하면 뒤쪽 ID가 밀렸고, v0.3.6부터는 `song_ids.txt`로 고정된다(위 항목)
 
@@ -122,7 +122,7 @@ dotnet build "H:\source\repos\PUMP IT UP RISE-unity-il2cpp\mod\PIURiseSkeleton\P
 - **미확인 (v0.3.4 변경분, 빌드 경고 0/오류 0만 확인)**: ① 판정바 틱 페이드·알약/다이아몬드 모양(`JudgmentBarShape=1/2`)이 v0.3.3과 같게 보이는지, ② 선곡 화면에서 커스텀 곡 프리뷰 영상을 여러 번 오간 뒤에도 영상이 정상 재생되는지(`remove_prepareCompleted` 동작), ③ 마라톤 곡 도중 이탈 → 공식 곡 결과창 ESC 정상
 - **미확인 (v0.3.3 변경분)**: 노트 비주얼 기능을 켠 곡/끈 곡을 번갈아 들어갈 때 훅 부착·해제가 실기에서 정상인지(`[NoteVisual]` 로그), 켠 상태의 흔들림·서든/히든 동작이 v0.3.2와 같은지. 빌드 경고 0/오류 0은 릴리즈 빌드로 확인
 - **확인 (2026-11-24 실기 부팅, v0.3.6)**: `[Build] 26399668 / 1.6.0` 일치 → `[Patch] 60/60` → `사전 JIT 점검 통과 — 메서드 352개 (패치 적용 포함 1479ms)` → `song_ids.txt` 생성(`990001=summertime (Arrange ver.)`, 기존 번호 유지) → 오프라인 `CheckTicket` 스텁·`DLCEntrys` 보강. 모드 경고 0. 선곡~플레이~결과는 미실기
-- **미실기 (v0.3.5, 클라우드 감사 PR #9 통합분 — 게임 PC에서 빌드 경고 0/오류 0 확인)**: 부팅 `[Patch] 60/60` → 커스텀 곡 1판(선곡→플레이→결과)을 확인할 것. 특히 볼 것: ① `CustomMediaPatches.VideoHandlers`의 `remove_prepareCompleted`/`remove_errorReceived`가 실제로 떼어지는지(컴파일은 통과) ② LNTYPE 1/`#LNOBJ` 차트 롱노트 ③ 3자리 `#WAV` 차트의 BPM ④ 마라톤 중 일시정지→나가기 후 공식 곡 결과창 Esc ⑤ `OfflineMode=0`에서 `[OnlineGuard]` 로그
+- **미실기 (v0.3.5, 클라우드 감사 PR #9 통합분 — 게임 PC에서 빌드 경고 0/오류 0 확인)**: 부팅 `[Patch] 60/60` → 커스텀 곡 1판(선곡→플레이→결과)을 확인할 것. 특히 볼 것: ① `CustomMediaPatches.VideoHandlers`의 `remove_prepareCompleted`/`remove_errorReceived`가 실제로 떼어지는지(컴파일은 통과) ② `hwa2.bms` 키음 이름 롱노트 15쌍이 그대로 나오는지(v0.3.7에서 표준 롱노트 분기 제거 후) ③ 3자리 `#WAV` 차트의 BPM ④ 마라톤 중 일시정지→나가기 후 공식 곡 결과창 Esc ⑤ `OfflineMode=0`에서 `[OnlineGuard]` 로그
 - **알려진 한계 (v0.3.4~v0.3.5 감사, 미수정)**: ① 커스텀 곡 자켓 PNG를 메인 스레드에서 동기 디코딩(`ImageConversion.LoadImage`) — 큰 이미지는 처음 볼 때 끊길 수 있음(이후 캐시) ② 프리뷰에 별도 파일이 없으면 본곡 전체를 메인 스레드에서 읽음(최근 2곡·64MB 이하 캐시) ③ 곡 폴더의 차트는 첫 파일 하나만 쓰므로 난이도별 차트를 나눌 수 없고, 더블(10키) BMS는 지원하지 않으며 `GAMESTART`가 템플릿을 Single로 통과시킨다(더블 선택 시 동작 미확인) ④ `AllPerfect`·클리어 연출 유예·일시정지 허용은 공식 곡에도 적용된다
 - **잠재 위험 (코드 감사, v0.3.2에서 방어 추가했으나 실측 전)**:
   - 노트 풀링: `Parent`/`Split` 검증으로 재사용을 감지해 기준 위치를 다시 잡는다. 단 게임이 재사용 시 `localPosition.x`를 초기화하지 않으면 재캡처 값에 이전 흔들림이 섞일 수 있다

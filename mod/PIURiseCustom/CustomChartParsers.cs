@@ -190,10 +190,10 @@ namespace PIURiseCustom
             var measureLen = new Dictionary<int, double>();
             var holdStartWavIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var holdEndWavIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            // #LNOBJ xx: 일반 채널에서 이 ID가 나오면 같은 레인의 직전 노트부터 여기까지 롱노트
-            var lnObjIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            // (measure, lane 0..4, posInMeasure 0..1, objId, LNTYPE 1 롱노트 채널(5x) 여부)
-            var rawNotes = new List<(int measure, int lane, double frac, string id, bool ln)>();
+            // 롱노트는 키음 이름(#WAVxx 홀드 시작/끝) 방식만 쓴다. 표준 BMS 롱노트(LNTYPE 1의 5x 채널, #LNOBJ)는
+            // 사용자가 쓰지 않아 지원하지 않는다(v0.3.5에 들어갔다가 v0.3.7에서 제거). 5x 채널은 무시되고 #LNOBJ 끝 표식은 단타로 읽힌다.
+            // (measure, lane 0..4, posInMeasure 0..1, objId)
+            var rawNotes = new List<(int measure, int lane, double frac, string id)>();
             var bpmChanges = new List<(int measure, double frac, double bpm)>();
             int maxMeasure = 0;
             int wavKeyLen = 2; // 2자리(#WAV01) 기본, 3자리(#WAV001) 감지 시 자동 전환
@@ -207,14 +207,6 @@ namespace PIURiseCustom
                 // 탭으로 구분한 헤더(#BPM\t140, #WAV01\t홀드 시작.wav)도 공백과 똑같이 읽는다
                 if (line.IndexOf('\t') >= 0)
                     line = line.Replace('\t', ' ');
-
-                // #LNOBJ xx (표준 롱노트 끝 오브젝트)
-                if (line.StartsWith("#LNOBJ", StringComparison.OrdinalIgnoreCase))
-                {
-                    string v = line.Substring(6).Trim();
-                    if (v.Length > 0) lnObjIds.Add(v);
-                    continue;
-                }
 
                 // 헤더: #BPM 140
                 if (line.StartsWith("#BPM ", StringComparison.OrdinalIgnoreCase))
@@ -311,21 +303,14 @@ namespace PIURiseCustom
                 }
 
                 // 5키 일반 노트 채널 매핑 (16, 11, 12, 13, 14 / 홀드 키음 매칭으로 처리)
-                // + LNTYPE 1 롱노트 채널 (56, 51, 52, 53, 54: 같은 채널의 두 오브젝트가 시작·끝)
                 int lane = MapBmsChannelToPiuLane(channel);
-                bool isLnChannel = false;
-                if (lane < 0)
-                {
-                    lane = MapBmsLongChannelToPiuLane(channel);
-                    isLnChannel = lane >= 0;
-                }
                 if (lane < 0) continue;
 
                 for (int i = 0; i < count; i++)
                 {
                     string obj = data.Substring(i * tokLen, tokLen);
                     if (obj == zeroTok) continue;
-                    rawNotes.Add((measure, lane, (double)i / count, obj, isLnChannel));
+                    rawNotes.Add((measure, lane, (double)i / count, obj));
                 }
             }
 
@@ -358,15 +343,10 @@ namespace PIURiseCustom
                 for (int c = 0; c < laneCount; c++)
                     grid[r, c] = '.';
 
-            // 롱노트 페어링용: 키음 이름(홀드 시작/끝), LNTYPE 1 채널(5x), #LNOBJ 직전 노트
+            // 롱노트 페어링용: 키음 이름(홀드 시작/끝)
             var lnOpenRow = new int[laneCount];
             Array.Fill(lnOpenRow, -1);
-            var lnChOpenRow = new int[laneCount];
-            Array.Fill(lnChOpenRow, -1);
-            var lastTapRow = new int[laneCount];
-            Array.Fill(lastTapRow, -1);
             int orphanHolds = 0;
-            int orphanLnObjEnds = 0;
 
             void PlaceHold(int ln, int s, int e)
             {
@@ -403,25 +383,10 @@ namespace PIURiseCustom
                 double beatPos = measureStartBeat[n.measure] + n.frac * mBeats;
                 int row = Math.Clamp((int)Math.Round(beatPos * split), 0, totalRows - 1);
 
-                if (n.ln)
-                {
-                    // LNTYPE 1: 첫 오브젝트가 시작, 다음 오브젝트가 끝
-                    if (lnChOpenRow[n.lane] < 0)
-                    {
-                        lnChOpenRow[n.lane] = row;
-                    }
-                    else
-                    {
-                        PlaceHold(n.lane, lnChOpenRow[n.lane], row);
-                        lnChOpenRow[n.lane] = -1;
-                    }
-                    lastTapRow[n.lane] = -1;
-                }
-                else if (holdStartWavIds.Contains(n.id))
+                if (holdStartWavIds.Contains(n.id))
                 {
                     CloseOrphan(lnOpenRow, n.lane); // 끝 없이 다시 시작하면 앞의 시작은 단타
                     lnOpenRow[n.lane] = row;
-                    lastTapRow[n.lane] = -1;
                 }
                 else if (holdEndWavIds.Contains(n.id))
                 {
@@ -434,37 +399,20 @@ namespace PIURiseCustom
                     {
                         grid[row, n.lane] = 'X';
                     }
-                    lastTapRow[n.lane] = -1;
-                }
-                else if (lnObjIds.Contains(n.id))
-                {
-                    // #LNOBJ: 같은 레인의 직전 단타를 롱노트 머리로 바꾼다.
-                    // 머리가 없으면(직전이 이미 롱노트였거나 레인 첫 오브젝트) 끝 표식만 버린다 — LNOBJ는 그 자체로 노트가 아니다(v0.3.6, 예전엔 단타가 하나 더 생겼다)
-                    if (lastTapRow[n.lane] >= 0 && grid[lastTapRow[n.lane], n.lane] == 'X')
-                        PlaceHold(n.lane, lastTapRow[n.lane], row);
-                    else
-                        orphanLnObjEnds++;
-                    lastTapRow[n.lane] = -1;
                 }
                 else
                 {
                     if (grid[row, n.lane] == '.')
-                    {
                         grid[row, n.lane] = 'X';
-                        lastTapRow[n.lane] = row;
-                    }
                 }
             }
 
             for (int c = 0; c < laneCount; c++)
             {
                 CloseOrphan(lnOpenRow, c);
-                CloseOrphan(lnChOpenRow, c);
             }
             if (orphanHolds > 0)
-                Mod.Log?.Warning($"[BMS Parser] '{Path.GetFileName(path)}' 끝(홀드 끝 키음·5x 채널 짝)이 없는 롱노트 시작 {orphanHolds}개 → 단타로 배치");
-            if (orphanLnObjEnds > 0)
-                Mod.Log?.Warning($"[BMS Parser] '{Path.GetFileName(path)}' 앞에 단타가 없는 #LNOBJ 끝 표식 {orphanLnObjEnds}개 → 무시");
+                Mod.Log?.Warning($"[BMS Parser] '{Path.GetFileName(path)}' 홀드 끝 키음이 없는 롱노트 시작 {orphanHolds}개 → 단타로 배치");
 
             // BPM 변경 지점을 행(row) 기준으로 정렬하여 블록 분할
             var bpmEvents = new SortedDictionary<int, double>();
@@ -516,7 +464,7 @@ namespace PIURiseCustom
         private const int FallbackSplit = 48;
 
         private static int ChooseBeatSplit(
-            List<(int measure, int lane, double frac, string id, bool ln)> notes,
+            List<(int measure, int lane, double frac, string id)> notes,
             List<(int measure, double frac, double bpm)> bpmChanges,
             double[] measureStartBeat)
         {
@@ -557,20 +505,6 @@ namespace PIURiseCustom
                 case "12": return 2;
                 case "13": return 3;
                 case "14": return 4;
-                default: return -1;
-            }
-        }
-
-        // LNTYPE 1 롱노트 채널: 1x 채널에 40(16진)을 더한 5x
-        private static int MapBmsLongChannelToPiuLane(string ch)
-        {
-            switch (ch)
-            {
-                case "56": return 0;
-                case "51": return 1;
-                case "52": return 2;
-                case "53": return 3;
-                case "54": return 4;
                 default: return -1;
             }
         }
