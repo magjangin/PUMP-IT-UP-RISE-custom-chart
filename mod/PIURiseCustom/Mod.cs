@@ -12,14 +12,18 @@ namespace PIURiseCustom
 {
     public class Mod : MelonMod
     {
-        public const string Version = "0.3.2";
+        public const string Version = "0.3.3";
 
         internal static MelonLogger.Instance Log;
+        internal static HarmonyLib.Harmony PatchHarmony;
+        // 관리 쪽 프레임 번호(OnUpdate마다 +1). 매 노트 경로에서 Time.frameCount 같은 IL2CPP 호출 없이 "이번 프레임에 이미 읽었나"를 판정한다.
+        internal static int FrameIndex;
         internal static readonly int[] JudgeCounts = new int[5];
 
         public override void OnInitializeMelon()
         {
             Log = LoggerInstance;
+            PatchHarmony = HarmonyInstance;
             SafePatcher.LogGameBuildInfo();
 
             ModConfig.Init();
@@ -28,7 +32,7 @@ namespace PIURiseCustom
 
             SafePatcher.ApplyAll(HarmonyInstance);
 
-            Log.Msg($"PIURiseCustom v{Version} loaded | Offline={SaveCustomConfig.OfflineMode} | Custom={SaveCustomConfig.CustomEnabled} | Root={ModConfig.ResolvedCustomRoot} | Songs={CustomPackManager.CatalogSongs.Count} | Patches={SafePatcher.AppliedCount} (실패 {SafePatcher.FailedPatches.Count})");
+            Log.Msg($"PIURiseCustom v{Version} loaded | Offline={SaveCustomConfig.OfflineMode} | Custom={SaveCustomConfig.CustomEnabled} | Root={ModConfig.ResolvedCustomRoot} | Songs={CustomPackManager.CatalogSongs.Count} | Patches={SafePatcher.AppliedCount} (실패 {SafePatcher.FailedPatches.Count}, 노트 비주얼 훅은 MainStage.Start 때 필요 시 부착)");
         }
 
         public override void OnSceneWasLoaded(int buildIndex, string sceneName)
@@ -39,6 +43,7 @@ namespace PIURiseCustom
 
         public override void OnUpdate()
         {
+            FrameIndex++;
             InGameOverlayUI.UpdateOverlay();
             CustomMarathonPatches.OnUpdate();
         }
@@ -64,6 +69,7 @@ namespace PIURiseCustom
             Mod.ResetCounts();
             InGameOverlayUI.ResetForNewStage();
             NoteVisualPatches.ResetForNewStage();
+            NoteVisualPatches.LateUpdateHooks.Sync(Mod.PatchHarmony); // config 핫리로드 결과에 맞춰 매 노트 훅을 붙이거나 뗀다
             GameplayOptionPatches.ResetMaxScoreTracking();
             CustomMarathonPatches.OnCustomSongStarted(Util.CurrentSongId());
             Mod.Log.Msg("MainStage.Start — 인게임 시작");

@@ -2,7 +2,7 @@
 
 **PUMP IT UP RISE** (Steam / Unity 2022.3 IL2CPP)용 MelonLoader 기반 **커스텀 차트 · 미디어 주입 · 오프라인 모드** 통합 프로젝트입니다.
 
-- **현재 버전:** `v0.3.2`
+- **현재 버전:** `v0.3.3`
 - **제작자:** 화영왕 (`magjangin`)
 - **대상 게임:** PUMP IT UP RISE (Steam AppID `2756930`, Build `26399668` 기준 실기 검증)
 - **로더:** MelonLoader `0.7.3` (`net6.0` / IL2CPP)
@@ -39,6 +39,7 @@ Sixtar Gate: STARTRAIL / DEFLATE 통합 규격과 호환되는 설정 파일을 
 - **판정바:** 가로/세로 방향, 모양(사각/알약/삼각), 위치(`Left`/`Center`/`Right`)
 - **실시간 키뷰어:** `GameInputManager` 기반 5K/6K 실시간 키 입력 표시 및 색상 커스터마이징
 - **비주얼 모디파이어:** 노트 흔들림(`NoteSway`), 속도 카오스(`NoteSpeedChaos`), 커스텀 노트 스킨(`CustomNotes`), 서든/히든(`Sudden`/`Hidden`), 페이드 인/아웃(`FadeIn`/`FadeOut`)
+  - 모두 꺼져 있으면 매 노트 훅을 아예 걸지 않아 프레임 부담이 없습니다(곡 시작 때 설정을 보고 자동으로 붙이거나 뗌, v0.3.3).
 - **커스텀 마라톤:** `CustomMarathon`, `CustomMarathonAutoNext`
 
 ---
@@ -105,11 +106,12 @@ dotnet build "mod/PIURiseCustom/PIURiseCustom.csproj" -c Release -p:GamePath="C:
 ```text
 .
 ├─ mod/
-│  ├─ PIURiseCustom/      # 통합 커스텀 차트 · 오프라인 주력 모드 (v0.3.2)
+│  ├─ PIURiseCustom/      # 통합 커스텀 차트 · 오프라인 주력 모드 (v0.3.3)
 │  └─ PIURiseSkeleton/    # 읽기 전용 판정 관찰용 최소 스켈레톤 모드 (PIURiseCustom과 함께 설치하지 말 것)
 ├─ docs/
 │  ├─ hooks.md            # 후킹 타깃, 전체 패치 목록, 업데이트 점검 절차
 │  └─ offline_feasibility.md # 오프라인 스텁 설계 분석
+├─ CHANGELOG.md           # 버전별 변경 사항
 ├─ AGENTS.md              # 에이전트/개발 인수인계 문서
 ├─ CLAUDE.md              # @AGENTS.md 연결 파일
 └─ PROGRESS.md            # 개발 진행 기록

@@ -33,6 +33,8 @@
 
 - [수정·빌드만] 11b. MaxScore 재설계 (2026-11-23) — GameplayOptionPatches.cs — 실기에서 `MaxScore=2000000`이 적용되지 않는 것을 발견. 원인: 쓰던 `CalcNewBestScore` 계열은 점수 계산이 아니라 신기록 비교(REA 의사코드로 확인). `GetScoreAndAccuracy` 1차 시도는 실기에서 호출되지 않아 실패 → 로그로 확인된 실제 경로 `NumberRoller.RollCombo(Score, int)` Prefix로 재교체(패치 수 62 유지, 로그 전용 훅 2개). **실기 확인 완료 (16:39)**: 결과 화면 SCORE 2000000, 로그 `1000000 → 2000000`
 
+- [수정·빌드] 12. v0.3.3 핫패스 정리 (2026-11-23) — NoteVisualPatches.cs(LateUpdate 훅 2개를 속성 기반 → 기능이 켜졌을 때만 `MainStage.Start`에서 동적 부착, 노트당 `Mathf.*`/`Time.time`/`Camera.main`/`Screen.height` IL2CPP 호출을 `MathF`·프레임 캐시로 대체), Mod.cs(`FrameIndex`, `PatchHarmony`, 0.3.3), OfflineStubPatches.cs(`Send` 차단 로그 명령별 1회), CHANGELOG.md 신설. 실기 미확인: 비주얼 기능 켬/끔 전환 시 훅 부착·해제
+
 ## 다음 세션 할 일
 0. v0.3.2 남은 실기: 인게임 HUD 점수 유무, 방 생성 창의 커스텀 곡 제목·자켓 표시, 멀티 방 목록 새로고침 등 나머지 조작. (`Patches=63`·멀티 메뉴 진입·방 생성/입장/빠른입장 차단·MaxScore는 확인 완료)
 0b. ~~Perfect 수 744→417 차이 조사~~ **완료 (2026-11-23)**: 노트 누락 아님(탭 328+홀드 헤드 15=343 보존, 격자 밖·중복 0). 차이는 홀드 몸통 틱 판정이 Split에 따라 달라지기 때문. 홀드 틱의 정확한 공식은 미확인(AGENTS.md §7)
@@ -40,5 +42,6 @@
 2. `.ucs` 멀티블록(변속) 차트 실기 검증
 3. ~~점수표 상수 확인~~ **완료 (2026-11-23)** — dump.cs에 적힌 `Metadata offset`(0x97E3F0 / 0x97E570)을 global-metadata.dat에서 직접 읽음. int[6] `21A1F6B9...` = {1000, 1000, 500, 100, -200, -500}, float[5] `9EC6817D...` = {1, 0.7, 0.3, 0.1, 0}. Cpp2IL·런타임 불필요
 4. 버전 고정 여부 결정: 현재 AutoUpdateBehavior 0(자동 업데이트). 업데이트되면 docs/hooks.md §5 절차를 따를 것
+4b. v0.3.3 실기: `NoteSway=1`로 곡 진입 → `[NoteVisual] … 붙였습니다` + 흔들림 정상, 다시 `NoteSway=0` → `… 뗐습니다` + 노트 정상
 5. (선택) `NoteVisualPatches` 풀링 방어·`MaxScore` 중복 방지는 v0.3.2에서 코드로 넣었으니 실기로 효과 확인 (AGENTS.md §7)
 6. (선택) `float[5]`(1, 0.7, 0.3, 0.1, 0)가 쓰이는 곳(`_scoreJudge` @0x164 호출부) 추적
