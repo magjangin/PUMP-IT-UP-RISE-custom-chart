@@ -305,18 +305,27 @@ namespace PIURiseCustom
         }
 
         // 8. 멀티플레이 WebSocket(wss://riselive…:3011) 접속 차단 (v0.3.2)
-        //    MultiplayController.ConnectAsync가 실제 소켓을 여는 유일한 출구다. 오프라인 모드에서는 연결을 시도하지 않고
-        //    완료된 Task만 돌려준다 → 외부로 나가는 통신이 0이 되고, OnConnected가 오지 않으니 멀티 화면은 연결 대기 상태로 남는다
-        [HarmonyPatch(typeof(MultiplayController), nameof(MultiplayController.ConnectAsync))]
-        internal static class MultiplayController_ConnectAsync_Patch
+        //    NetworkManager.InitMultiCon()이 MultiplayController를 만들고 ConnectAsync로 소켓을 연다(선곡 화면 진입 때도 불린다).
+        //    오프라인 모드에서는 이 상위 메서드를 가로채 "영원히 끝나지 않는 Task"를 돌려준다 → 소켓을 열지 않고, 멀티 기능은 연결 대기 상태로 남는다.
+        //    ★ MultiplayController.ConnectAsync(string, CancellationToken)를 직접 후킹하면 안 된다: struct 인자(CancellationToken)를
+        //      Il2CppInterop 트램펄린이 박싱하다 il2cpp_value_box에서 AccessViolationException으로 게임이 죽는다(2026-11-23 실기 크래시).
+        //      인자가 없는 InitMultiCon만 후킹할 것.
+        private static bool _multiBlockLogged;
+
+        [HarmonyPatch(typeof(NetworkManager), nameof(NetworkManager.InitMultiCon))]
+        internal static class NetworkManager_InitMultiCon_Patch
         {
             private static bool Prefix(ref Il2CppSystem.Threading.Tasks.Task __result)
             {
                 if (!ModConfig.OfflineMode.Value)
                     return true;
 
-                Mod.Log.Msg("[OfflineStub] MultiplayController.ConnectAsync 차단 (WebSocket 접속 안 함)");
-                __result = Il2CppSystem.Threading.Tasks.Task.CompletedTask;
+                if (!_multiBlockLogged)
+                {
+                    _multiBlockLogged = true;
+                    Mod.Log.Msg("[OfflineStub] NetworkManager.InitMultiCon 차단 (멀티 WebSocket 접속 안 함, 이후 호출은 로그 생략)");
+                }
+                __result = Il2CppSystem.Threading.Tasks.Task.Delay(-1);
                 return false;
             }
         }
