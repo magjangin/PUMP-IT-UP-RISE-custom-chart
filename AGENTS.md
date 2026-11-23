@@ -1,6 +1,6 @@
 # PUMP IT UP RISE — 인수인계 문서 (AGENTS.md)
 
-> 작성 2026-11-22, 최신화 2026-11-23 (v0.3.3 매 노트 훅 조건부 부착·핫패스 IL2CPP 호출 감소). 버전별 변경은 [CHANGELOG.md](CHANGELOG.md). 단계별 진행 기록은 [PROGRESS.md](PROGRESS.md), 훅 전체 목록·업데이트 점검 절차는 [docs/hooks.md](docs/hooks.md).
+> 작성 2026-11-22, 최신화 2026-11-23 (v0.3.4 전체 감사: 마라톤 ESC 고착·프리뷰 핸들러 누적 수정, 오프라인 패치 실패 오류 승격, 매 프레임 경로 예외 격리, 오버레이 IL2CPP 호출 감소). 버전별 변경은 [CHANGELOG.md](CHANGELOG.md). 단계별 진행 기록은 [PROGRESS.md](PROGRESS.md), 훅 전체 목록·업데이트 점검 절차는 [docs/hooks.md](docs/hooks.md).
 > **확인** = 디스크·로그·의사코드로 직접 본 것, **추정** = 해석.
 
 ## 1. 게임 버전 및 고정 여부
@@ -29,6 +29,12 @@
 - **노트 비주얼 `LateUpdate` 훅은 조건부로만 붙인다 (v0.3.3)**: `SpliteScript`/`LongSpliteScript.LateUpdate`는 매 프레임 × 화면의 모든 노트마다 불린다. IL2CPP Harmony 훅은 본문이 바로 `return`해도 호출마다 트램펄린·인자 마샬링 비용이 들어, 기능을 다 꺼도 노트 수만큼 비용이 났다. 그래서 두 클래스에서 `[HarmonyPatch]`를 떼고(`SafePatcher` 집계 63 → 61), `NoteVisualPatches.LateUpdateHooks.Sync`가 `MainStage.Start` Postfix(config 핫리로드 직후)마다 Sway/Chaos/Sudden/Hidden/Fade/CustomNotes/LaneCoverDebug 중 하나라도 켜져 있으면 붙이고 모두 꺼지면 뗀다. 로그 `[NoteVisual] … 훅을 붙였습니다/뗐습니다`. 대상을 못 찾거나 부착이 실패하면 경고 1회 후 그 실행에서는 다시 시도하지 않는다
 - **매 노트 경로에서는 `Mathf.*`·`Time.time`·`Camera.main`·`Screen.height`를 노트마다 부르지 않는다 (v0.3.3)**: interop의 `Mathf`는 관리 코드가 아니라 IL2CPP 호출이다(sxtg2와 같은 원칙). `MathF`/`Math`와 자체 `Clamp01`을 쓰고, 프레임 값은 `Mod.FrameIndex`(OnUpdate마다 +1) 기준 프레임 캐시(`RefreshFrameCache`)로 한 번만 읽는다. Unity 객체 null 비교(`op_Inequality`)도 노트당 한 번(`hasParent`/`hasPlayBase`)
 - 오프라인 `NetworkManager.Send` 차단 로그는 명령별 첫 1회만 남긴다 (v0.3.3, 씬 전환마다 같은 명령이 반복돼 로그가 묻혔음)
+- **오프라인 패치 실패는 경고가 아니라 오류다 (v0.3.4)**: `SafePatcher`는 실패한 패치의 바깥 클래스(= 기능 그룹)를 세고, `OfflineStubPatches` 안의 패치가 하나라도 빠졌는데 `OfflineMode=1`이면 `[Patch] 오프라인 스텁 패치 N개 적용 실패` 오류를 남긴다. 다른 기능 실패는 그 기능만 꺼지지만, 오프라인 관문이 빠지면 그 경로는 조용히 실제 서버로 나가기 때문이다. 패치 클래스를 새로 만들 때도 **기능별 정적 클래스 안에 중첩**해야 이 그룹 집계가 맞는다(최상위 패치 클래스는 `Mod` 그룹)
+- **매 프레임 경로는 `Mod.OnUpdate`에서 서브시스템별 try/catch (v0.3.4)**: 업데이트로 필드·입력 API가 바뀌어 예외가 나면 MelonLoader가 프레임마다 스택을 찍어 로그가 폭주한다. 첫 예외만 `[OverlayUI]`/`[Marathon] 매 프레임 갱신 중 예외` 경고로 남긴다. 마라톤은 구식 `UnityEngine.Input.GetKeyDown`을 쓰는데, 게임이 InputSystem 전용으로 바뀌면 여기서 걸린다(현재 빌드에서 실측 안 됨)
+- **`VideoPlayer` 이벤트 핸들러는 붙이기 전에 직전 것을 뗀다 (v0.3.4)**: `add_prepareCompleted`/`add_errorReceived`로 붙인 Il2Cpp 델리게이트는 떼지 않으면 같은 플레이어에 계속 쌓인다(선곡 프리뷰는 곡을 오갈 때마다 1개씩). `CustomMediaPatches.VideoHandlers`가 마지막 델리게이트 객체를 들고 있다가 `remove_*`로 뗀다(실패해도 무시)
+- **Unity 객체의 "없음" 판정은 두 가지를 구분한다**: 우리가 `null`로 비운 필드는 `is null`(관리 비교, IL2CPP 호출 없음)로 먼저 걸러 매 프레임 비용을 없애고, 게임 쪽에서 파괴됐을 수 있는 객체(`ResultUI`, `MainStage` 등)는 `== null`(Unity `op_Equality`, 파괴 감지)을 유지한다
+- 마라톤 전환 플래그(`_transitionTriggered`, 결과창 `DoEscape`를 막음)는 곡 시작·결과창 표시 때 항상 푼다 (v0.3.4). v0.3.3까지는 커스텀 곡 결과창에서만 풀려, 마라톤 곡을 도중에 나가고 공식 곡을 치면 ESC가 막혔다
+- `config.txt`에서 줄을 **지우면** 그 항목은 기본값으로 돌아가지 않고 마지막으로 읽은 값이 게임을 재시작할 때까지 유지된다(핫리로드는 "있는 키만 덮어쓰기"). 끄려면 줄을 지우지 말고 `0`으로 바꿀 것
 - `NoteVisualPatches`의 노트 기준 위치는 `GetInstanceID()` 키에 `Parent`(parentLine 포인터)·`Split`을 같이 저장하고, 값이 달라지면 다시 잡는다(풀링 재사용 방어, v0.3.2). X/Y를 한 딕셔너리로 합쳐 프레임당 조회도 반으로 줄었다
 - **`MaxScore`는 표시 직전 한 군데에서만 적용한다 (v0.3.2 재설계)**: 결과 화면이 점수를 찍는 `NumberRoller.RollCombo(StatType.Score, int value, float)` Prefix에서 `value`만 곱한다. **실기 로그(2026-11-23 16:35)로 확인한 경로**: `NumberRoller.RollCombo(Score, 1000000)`. `_stat`(원본)은 건드리지 않아 배율이 누적되지 않는다. `ArcadeResultUI.ApplyScoreCoroutine(int)`·`PlayBase.GetScoreAndAccuracy`는 같은 실기에서 **한 번도 불리지 않았고**, 값은 바꾸지 않고 `[미처리 경로]` 로그만 남긴다(다른 화면·모드가 쓰면 그때 훅 추가). 스테이지당 12줄 제한. **실기 확인 (2026-11-23 16:39)**: `MaxScore=2000000`에서 결과 화면 SCORE가 2000000으로 표시, 로그 `[MaxScore] … 표시값 1000000 → 2000000`, `[미처리 경로]` 로그 없음. 인게임 HUD 점수가 따로 있는지는 미확인
 - `config.txt`(SaveCustomKey)가 설정 원본이다. `ModConfig`(MelonPreferences)의 `OfflineMode`/`CustomEnabled`/`CustomChartOffsetMs`는 config.txt를 읽을 때마다 덮어써진다
@@ -37,7 +43,7 @@
 - 커스텀 곡 ID는 `990001`부터 경로 사전순으로 부여한다(README 구버전의 `HWA_0001` 표기는 오기). 폴더를 추가·삭제하면 뒤쪽 곡 ID가 밀린다
 
 ## 4. 핵심 훅 시그니처와 주입 파이프라인
-- 주입: version.dll(MelonLoader) → Mods\PIURiseCustom.dll → `OnInitializeMelon`에서 `SafePatcher.ApplyAll(HarmonyInstance)` (v0.3.3 기준 **61개 패치 클래스** + 노트 비주얼 `LateUpdate` 훅 2개는 기능이 켜졌을 때만 `MainStage.Start`에서 동적 부착. v0.3.2 63/63 실기 부팅 확인 2026-11-23 17:13)
+- 주입: version.dll(MelonLoader) → Mods\PIURiseCustom.dll → `OnInitializeMelon`에서 `SafePatcher.ApplyAll(HarmonyInstance)` (v0.3.3~v0.3.4 기준 **61개 패치 클래스** + 노트 비주얼 `LateUpdate` 훅 2개는 기능이 켜졌을 때만 `MainStage.Start`에서 동적 부착. v0.3.2 63/63 실기 부팅 확인 2026-11-23 17:13)
 - interop 네임스페이스: 전역 타입 `Il2Cpp.MainStage`, 네임스페이스 타입 `Il2CppPIUMobileStepDLL.PUMPPlayer` (확인)
 - 커스텀 곡 파이프라인 요약 (전체 표는 docs/hooks.md §4):
   1. `Mk2SongLoader.CacheSongTable/CacheArcadeSongTable` Prefix → `PIUDataBase.songTable`에 `Song` 주입
@@ -87,7 +93,7 @@ dotnet build "H:\source\repos\PUMP IT UP RISE-unity-il2cpp\mod\PIURiseSkeleton\P
 ```
   - PIURiseCustom과 같은 훅을 중복으로 걸므로 Mods\에 함께 두지 않는다
 - 실행: `steam://rungameid/2756930` (exe 직접 실행 시 `SteamAPI_RestartAppIfNecessary`로 종료됨), 로그: `<게임>\MelonLoader\Latest.log`
-- 부팅 정상 판정 로그: `[Build] …`, `[Patch] Harmony 패치 61/61개 적용 완료`(v0.3.3), `[OfflineStub] SteamManager.CheckTicket 가로챔`. 비주얼 기능을 켠 상태로 곡에 들어가면 `[NoteVisual] … LateUpdate 훅을 붙였습니다`
+- 부팅 정상 판정 로그: `[Build] …`, `[Patch] Harmony 패치 61/61개 적용 완료`(v0.3.3~), `PIURiseCustom v0.3.4 loaded`, `[OfflineStub] SteamManager.CheckTicket 가로챔`. 비주얼 기능을 켠 상태로 곡에 들어가면 `[NoteVisual] … LateUpdate 훅을 붙였습니다`
 
 ## 6-1. 오프라인 버전 구현 (`OfflineStubPatches.cs`)
 - 정적 분석은 [docs/offline_feasibility.md](docs/offline_feasibility.md).
@@ -106,6 +112,7 @@ dotnet build "H:\source\repos\PUMP IT UP RISE-unity-il2cpp\mod\PIURiseSkeleton\P
 - **확인 (2026-11-23 17:10 실기, v0.3.2 멀티 메뉴)**: F2 멀티 메뉴 → F3 방 생성 창 → ESC(`DoCancel`)로 닫힘, 다시 F3 → ENTER(`DoConfirm` → `NetworkManager.CreateRoom(990001, 5)`) 크래시 없음 → 이후 ESC 정상. 접속은 `127.0.0.1:1`로 즉시 실패해 외부 통신 없음. 방은 실제로 만들어지지 않는다(서버 없음). 곡 제목·자켓이 창에 커스텀으로 뜨는지는 스크린샷으로 확인하지 못했다
 - **확인 (2026-11-23 17:13 실기, v0.3.2 최종 63개 빌드)**: 부팅 `Patches=63 (실패 0)`, `PlayerData.DLCEntrys` 보강 로그, 멀티 메뉴 진입(`InitMultiCon` 로컬 대체) 후 **방 입장·빠른입장도 크래시 없이 의도대로 막힘**(사용자 확인; 방은 만들어지거나 입장되지 않는다), 새 크래시 이벤트 없음
 - **미확인 (v0.3.2 변경분)**: ① `[OfflineStub] 응답 형식 미확인 명령` 경고가 실제로 어떤 명령에서 뜨는지(실기 로그에는 한 번도 없음), ② 노트 풀링 방어(Sway/Chaos 켠 상태), ③ 인게임 HUD 점수 표시 여부, ④ 방 생성 창에 커스텀 곡 제목·자켓이 제대로 뜨는지(스크린샷 미확인), ⑤ 방 목록 새로고침 등 멀티 메뉴의 나머지 조작
+- **미확인 (v0.3.4 변경분, 빌드 경고 0/오류 0만 확인)**: ① 판정바 틱 페이드·알약/다이아몬드 모양(`JudgmentBarShape=1/2`)이 v0.3.3과 같게 보이는지, ② 선곡 화면에서 커스텀 곡 프리뷰 영상을 여러 번 오간 뒤에도 영상이 정상 재생되는지(`remove_prepareCompleted` 동작), ③ 마라톤 곡 도중 이탈 → 공식 곡 결과창 ESC 정상
 - **미확인 (v0.3.3 변경분)**: 노트 비주얼 기능을 켠 곡/끈 곡을 번갈아 들어갈 때 훅 부착·해제가 실기에서 정상인지(`[NoteVisual]` 로그), 켠 상태의 흔들림·서든/히든 동작이 v0.3.2와 같은지. 빌드 경고 0/오류 0은 릴리즈 빌드로 확인
 - **잠재 위험 (코드 감사, v0.3.2에서 방어 추가했으나 실측 전)**:
   - 노트 풀링: `Parent`/`Split` 검증으로 재사용을 감지해 기준 위치를 다시 잡는다. 단 게임이 재사용 시 `localPosition.x`를 초기화하지 않으면 재캡처 값에 이전 흔들림이 섞일 수 있다

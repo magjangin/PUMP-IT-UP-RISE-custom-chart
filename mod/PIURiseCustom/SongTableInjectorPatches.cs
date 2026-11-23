@@ -15,7 +15,8 @@ namespace PIURiseCustom
     /// </summary>
     internal static class SongTableInjectorPatches
     {
-        // PlayBase.LoadStep에서 HWA_ 커스텀 곡을 로드할 때 원본 DataAssets 경로 통과용으로 쓰는 공식 템플릿 곡 정보
+        // 커스텀 곡(990001…)을 GAMESTART·PlayBase.LoadStep·방 생성 창에 넘길 때 원본 DataAssets/Addressables 검사 통과용으로 쓰는 공식 템플릿 곡 정보
+        // (songTable 주입 때 처음 만난 공식 곡으로 정해진다. 공식 곡이 하나도 없으면 null → 커스텀 곡 시작 불가)
         internal static string TemplateOfficialSongId;
         internal static int TemplateOfficialLevel = 1;
         internal static string TemplateOfficialPlayType = "Single";
@@ -333,6 +334,20 @@ namespace PIURiseCustom
             private static void Prefix(ref string songID, ref string playType, ref int playLevel, ref Song.STEP currentStep, out GameStartState __state)
             {
                 __state = null;
+                // 관문 Prefix: 여기서 예외가 새면 원본 GAMESTART가 건너뛰어져 공식 곡까지 시작되지 않으므로 격리한다(v0.3.4)
+                try
+                {
+                    PrefixCore(ref songID, ref playType, ref playLevel, ref currentStep, ref __state);
+                }
+                catch (Exception ex)
+                {
+                    __state = null;
+                    Mod.Log.Warning($"[MainStation.GAMESTART] 전처리 오류(원본 그대로 진행): {ex.Message}");
+                }
+            }
+
+            private static void PrefixCore(ref string songID, ref string playType, ref int playLevel, ref Song.STEP currentStep, ref GameStartState __state)
+            {
                 Mod.Log.Msg($"[MainStation.GAMESTART] songID={songID}, playType={playType}, lv={playLevel}, step={currentStep}");
 
                 if (ModConfig.CustomEnabled.Value &&
@@ -392,10 +407,18 @@ namespace PIURiseCustom
         {
             private static void Prefix()
             {
-                if (!ModConfig.CustomEnabled.Value || !Util.IsCurrentSongCustom()) return;
-                var pd = PlayerData.Instance;
-                if (pd != null)
-                    pd.SelectedLevel = LastCustomSelectedLevel;
+                // 관문 Prefix: 예외가 새면 원본 OnShow(로딩 커튼)까지 건너뛰므로 격리
+                try
+                {
+                    if (!ModConfig.CustomEnabled.Value || !Util.IsCurrentSongCustom()) return;
+                    var pd = PlayerData.Instance;
+                    if (pd != null)
+                        pd.SelectedLevel = LastCustomSelectedLevel;
+                }
+                catch (Exception ex)
+                {
+                    Mod.Log.Warning($"[IngameSongInfoUI] 난이도 복원 실패(원본 진행): {ex.Message}");
+                }
             }
 
             private static void Postfix(IngameSongInfoUI __instance)
@@ -519,9 +542,11 @@ namespace PIURiseCustom
             }
         }
 
-        // 멀티 방 생성 창(F3): 원본 SetSongInit은 우리가 주입한 커스텀 곡(990001…)을 받으면 NullReferenceException으로 죽는다(2026-11-23 실기).
-        // 예외로 호출한 쪽(MultiStageRoomListUI.DoCreateRoom)이 중단되어 창의 SetKeyAction(키 등록)이 실행되지 않고, 그래서 ESC/ENTER가 먹통이 된다.
-        // → 다른 UI와 같은 방식으로 원본에는 공식 템플릿 곡 ID를 넘겨 정상 실행시키고, Postfix에서 제목·자켓만 커스텀으로 덮어쓴다.
+        // 멀티 방 생성 창(F3): 원본 SetSongInit이 NullReferenceException으로 죽으면 호출한 MultiStageRoomListUI.DoCreateRoom이 중단되어
+        // 창의 SetKeyAction(키 등록)이 실행되지 않고 ESC/ENTER가 먹통이 된다(2026-11-23 실기).
+        // 진짜 원인은 오프라인에서 PlayerData.DLCEntrys가 null인 것(공식 곡으로도 재현) → Prefix 첫 줄의 EnsureOfflineDlcEntries가 해결한다.
+        // 커스텀 곡 ID는 자켓 스프라이트 조회가 비는 등 원본에 넘기기 안전하지 않아, 다른 UI와 같은 방식으로 원본에는 공식 템플릿 곡 ID를 넘기고
+        // Postfix에서 제목·자켓만 커스텀으로 덮어쓴다.
         [HarmonyPatch(typeof(MultiStageCreateRoomPopup), nameof(MultiStageCreateRoomPopup.SetSongInit))]
         internal static class MultiStageCreateRoomPopup_SetSongInit_Patch
         {

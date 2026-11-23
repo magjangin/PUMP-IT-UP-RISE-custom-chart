@@ -35,6 +35,9 @@ namespace PIURiseCustom
                 .OrderBy(t => t.FullName, StringComparer.Ordinal)
                 .ToList();
 
+            var failedByGroup = new SortedDictionary<string, int>(StringComparer.Ordinal);
+            int offlineFailed = 0;
+
             foreach (var type in patchTypes)
             {
                 try
@@ -45,6 +48,11 @@ namespace PIURiseCustom
                 catch (Exception ex)
                 {
                     FailedPatches.Add(type.Name);
+                    // 패치 클래스는 기능별 정적 클래스(OfflineStubPatches 등) 안에 중첩돼 있다 → 바깥 클래스 이름이 곧 기능 그룹
+                    string group = type.DeclaringType?.Name ?? "Mod";
+                    failedByGroup[group] = failedByGroup.TryGetValue(group, out int n) ? n + 1 : 1;
+                    if (type.DeclaringType == typeof(OfflineStubPatches)) offlineFailed++;
+
                     var root = ex;
                     while (root.InnerException != null) root = root.InnerException;
                     Mod.Log.Warning($"[Patch] 적용 실패(해당 기능만 비활성): {type.FullName} — {root.GetType().Name}: {root.Message}");
@@ -52,10 +60,20 @@ namespace PIURiseCustom
             }
 
             if (FailedPatches.Count == 0)
+            {
                 Mod.Log.Msg($"[Patch] Harmony 패치 {AppliedCount}/{patchTypes.Count}개 적용 완료");
+            }
             else
-                Mod.Log.Warning($"[Patch] Harmony 패치 {AppliedCount}/{patchTypes.Count}개 적용, 실패 {FailedPatches.Count}개: {string.Join(", ", FailedPatches)} " +
+            {
+                string groups = string.Join(", ", failedByGroup.Select(kv => $"{kv.Key} {kv.Value}개"));
+                Mod.Log.Warning($"[Patch] Harmony 패치 {AppliedCount}/{patchTypes.Count}개 적용, 실패 {FailedPatches.Count}개 [{groups}]: {string.Join(", ", FailedPatches)} " +
                                 "— 게임 업데이트로 대상 메서드가 바뀌었을 수 있습니다. docs/hooks.md 업데이트 점검 절차를 따르세요.");
+            }
+
+            // 오프라인 관문이 하나라도 빠지면 그 경로는 실제 서버로 나간다(로그인·기록 전송 등). 다른 기능 실패와 달리 조용히 넘기면 안 된다.
+            if (offlineFailed > 0 && SaveCustomConfig.OfflineMode)
+                Mod.Log.Error($"[Patch] 오프라인 스텁 패치 {offlineFailed}개 적용 실패 — OfflineMode=1이어도 일부 통신이 실제 서버로 나갈 수 있습니다. " +
+                              "고치기 전에는 온라인 계정으로 플레이하지 마세요 (docs/hooks.md §5-6).");
         }
 
         /// <summary>

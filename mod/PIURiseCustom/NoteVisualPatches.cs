@@ -189,7 +189,7 @@ namespace PIURiseCustom
         // NoteSway / NoteSpeedChaos / Sudden / Hidden / FadeIn / FadeOut / CustomNotes (일반 노트·롱노트)
         // ★ 매 프레임 × 화면의 모든 노트마다 불리는 경로라, 비주얼 기능이 하나도 켜져 있지 않으면 훅 자체를 걸지 않는다(v0.3.3).
         //   IL2CPP Harmony 훅은 본문이 바로 return해도 호출마다 트램펄린·인자 마샬링 비용이 든다.
-        //   → [HarmonyPatch] 속성 없이 SyncLateUpdateHooks가 MainStage.Start(config 핫리로드 직후)마다 붙이거나 뗀다.
+        //   → [HarmonyPatch] 속성 없이 LateUpdateHooks.Sync가 MainStage.Start(config 핫리로드 직후)마다 붙이거나 뗀다.
         internal static class LateUpdateHooks
         {
             private static void ShortPostfix(SpliteScript __instance) => ApplyVisuals(__instance, null);
@@ -260,6 +260,13 @@ namespace PIURiseCustom
                 {
                     // 붙이다 실패하면 반복 시도로 로그가 쌓이지 않게 이번 실행에서는 포기한다(나머지 기능은 영향 없음)
                     _resolveFailed = true;
+                    // 일반 노트만 붙고 롱노트에서 실패한 경우처럼 반쯤 붙은 상태로 남으면, 기능을 꺼도 다시는 떼지 못하므로 붙은 쪽을 되돌린다
+                    if (want)
+                    {
+                        try { harmony.Unpatch(_shortTarget, _shortPatch); } catch { }
+                        if (_longTarget != null) { try { harmony.Unpatch(_longTarget, _longPatch); } catch { } }
+                        _attached = false;
+                    }
                     Mod.Log.Warning($"[NoteVisual] LateUpdate 훅 {(want ? "부착" : "해제")} 실패 — 노트 비주얼 기능 비활성: {ex.GetType().Name}: {ex.Message}");
                 }
             }

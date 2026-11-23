@@ -2,7 +2,7 @@
 
 **PUMP IT UP RISE** (Steam / Unity 2022.3 IL2CPP)용 MelonLoader 기반 **커스텀 차트 · 미디어 주입 · 오프라인 모드** 통합 프로젝트입니다.
 
-- **현재 버전:** `v0.3.3`
+- **현재 버전:** `v0.3.4`
 - **제작자:** 화영왕 (`magjangin`)
 - **대상 게임:** PUMP IT UP RISE (Steam AppID `2756930`, Build `26399668` 기준 실기 검증)
 - **로더:** MelonLoader `0.7.3` (`net6.0` / IL2CPP)
@@ -97,6 +97,8 @@ dotnet build "mod/PIURiseCustom/PIURiseCustom.csproj" -c Release -p:GamePath="C:
 
 - 모드는 부팅할 때 `MelonLoader/Latest.log`에 Steam 빌드 번호와 게임 버전을 남기고, 검증된 빌드(`26399668` / `1.6.0`)와 다르면 경고합니다.
 - Harmony 패치는 **기능별로 따로 적용**됩니다. 업데이트로 일부 메서드가 바뀌어도 그 기능만 꺼지고 나머지는 동작하며, 로그의 `[Patch] … 실패` 줄에 꺼진 패치 이름이 나옵니다.
+- 오프라인 차단 패치가 하나라도 빠지면 `[Patch] 오프라인 스텁 패치 … 적용 실패` **오류**가 뜹니다. 이 줄이 보이면 고칠 때까지 온라인 계정으로 플레이하지 마세요.
+- `config.txt`에서 줄을 지워도 그 항목은 게임을 다시 켤 때까지 마지막 값이 유지됩니다. 기능을 끄려면 값을 `0`으로 바꾸세요.
 - 점검 순서와 패치별 영향 표: [docs/hooks.md](docs/hooks.md) §4·§5
 
 ---
@@ -106,7 +108,7 @@ dotnet build "mod/PIURiseCustom/PIURiseCustom.csproj" -c Release -p:GamePath="C:
 ```text
 .
 ├─ mod/
-│  ├─ PIURiseCustom/      # 통합 커스텀 차트 · 오프라인 주력 모드 (v0.3.3)
+│  ├─ PIURiseCustom/      # 통합 커스텀 차트 · 오프라인 주력 모드 (v0.3.4)
 │  └─ PIURiseSkeleton/    # 읽기 전용 판정 관찰용 최소 스켈레톤 모드 (PIURiseCustom과 함께 설치하지 말 것)
 ├─ docs/
 │  ├─ hooks.md            # 후킹 타깃, 전체 패치 목록, 업데이트 점검 절차

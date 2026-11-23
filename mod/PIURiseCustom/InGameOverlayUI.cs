@@ -20,6 +20,7 @@ namespace PIURiseCustom
         {
             public Image Img;
             public float Time;
+            public bool Active; // SetActive 상태를 관리 쪽에 기억 → 매 프레임 틱마다 gameObject.activeSelf(IL2CPP 호출 2회)를 읽지 않는다
         }
 
         private static GameObject _canvasObj;
@@ -98,8 +99,8 @@ namespace PIURiseCustom
             try
             {
                 if (_judgeRoot == null) return;
-                float maxMs = Mathf.Max(120f, _maxWindowMs);
-                float norm = Mathf.Clamp(deltaMs / maxMs, -1f, 1f);
+                float maxMs = MathF.Max(120f, _maxWindowMs);
+                float norm = Math.Clamp(deltaMs / maxMs, -1f, 1f);
 
                 var t = _ticks[_tickHead];
                 _tickHead = (_tickHead + 1) % MaxTicks;
@@ -117,8 +118,11 @@ namespace PIURiseCustom
                         rt.anchoredPosition = new Vector2(0f, -norm * (_barH * 0.48f));
                     else
                         rt.anchoredPosition = new Vector2(norm * (_barW * 0.48f), 0f);
-                    t.Img.gameObject.SetActive(true);
-                    _ticks[(_tickHead - 1 + MaxTicks) % MaxTicks].Time = Time.unscaledTime;
+                    if (!t.Active)
+                        t.Img.gameObject.SetActive(true);
+                    int slot = (_tickHead - 1 + MaxTicks) % MaxTicks;
+                    _ticks[slot].Time = Time.unscaledTime;
+                    _ticks[slot].Active = true;
                 }
             }
             catch { }
@@ -138,42 +142,40 @@ namespace PIURiseCustom
             }
             if (_sprCapsule == null)
             {
-                const int s = 64;
-                var tex = new Texture2D(s, s, TextureFormat.RGBA32, false);
-                for (int y = 0; y < s; y++)
-                {
-                    for (int x = 0; x < s; x++)
-                    {
-                        float dx = (x + 0.5f) / s - 0.5f;
-                        float dy = (y + 0.5f) / s - 0.5f;
-                        float a = Mathf.Clamp01((0.5f - Mathf.Sqrt(dx * dx + dy * dy)) * 24f);
-                        tex.SetPixel(x, y, new Color(1f, 1f, 1f, a));
-                    }
-                }
-                tex.Apply();
-                tex.hideFlags = HideFlags.DontUnloadUnusedAsset;
-                _sprCapsule = Sprite.Create(tex, new Rect(0, 0, s, s), new Vector2(0.5f, 0.5f), 100f);
-                _sprCapsule.hideFlags = HideFlags.DontUnloadUnusedAsset;
+                _sprCapsule = CreateMaskSprite(64, (dx, dy) => (0.5f - MathF.Sqrt(dx * dx + dy * dy)) * 24f);
             }
             if (_sprDiamond == null)
             {
-                const int s = 64;
-                var tex = new Texture2D(s, s, TextureFormat.RGBA32, false);
-                for (int y = 0; y < s; y++)
-                {
-                    for (int x = 0; x < s; x++)
-                    {
-                        float dx = Mathf.Abs((x + 0.5f) / s - 0.5f);
-                        float dy = Mathf.Abs((y + 0.5f) / s - 0.5f);
-                        float a = Mathf.Clamp01((0.5f - (dx + dy)) * 24f);
-                        tex.SetPixel(x, y, new Color(1f, 1f, 1f, a));
-                    }
-                }
-                tex.Apply();
-                tex.hideFlags = HideFlags.DontUnloadUnusedAsset;
-                _sprDiamond = Sprite.Create(tex, new Rect(0, 0, s, s), new Vector2(0.5f, 0.5f), 100f);
-                _sprDiamond.hideFlags = HideFlags.DontUnloadUnusedAsset;
+                _sprDiamond = CreateMaskSprite(64, (dx, dy) => (0.5f - (MathF.Abs(dx) + MathF.Abs(dy))) * 24f);
             }
+        }
+
+        /// <summary>
+        /// 흰색 알파 마스크 스프라이트를 만든다. 픽셀 계산은 관리 배열에서 끝내고 SetPixels32 한 번으로 올린다
+        /// (예전: 64×64 픽셀마다 Mathf 3회 + SetPixel 1회 = 모양당 약 1.6만 번의 IL2CPP 호출이 첫 곡 시작 때 몰렸다, v0.3.4).
+        /// alpha(dx, dy)의 dx·dy는 중심 기준 -0.5..0.5, 반환값은 0..1로 잘린다.
+        /// </summary>
+        private static Sprite CreateMaskSprite(int size, Func<float, float, float> alpha)
+        {
+            var pixels = new Color32[size * size];
+            for (int y = 0; y < size; y++)
+            {
+                float dy = (y + 0.5f) / size - 0.5f;
+                for (int x = 0; x < size; x++)
+                {
+                    float dx = (x + 0.5f) / size - 0.5f;
+                    float a = Math.Clamp(alpha(dx, dy), 0f, 1f);
+                    pixels[y * size + x] = new Color32(255, 255, 255, (byte)(a * 255f + 0.5f));
+                }
+            }
+
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            tex.SetPixels32(pixels);
+            tex.Apply();
+            tex.hideFlags = HideFlags.DontUnloadUnusedAsset;
+            var sp = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f);
+            sp.hideFlags = HideFlags.DontUnloadUnusedAsset;
+            return sp;
         }
 
         private static Sprite GetShapeSprite(int shape) => shape switch
@@ -244,7 +246,7 @@ namespace PIURiseCustom
                 CreateImage("BG", _judgeRoot.transform, new Vector2(_barW + 8f, _barH + 8f), Vector2.zero, new Color(0.05f, 0.05f, 0.08f, 0.72f), barShape);
 
                 // 구간 밴드
-                float maxMs = Mathf.Max(120f, _maxWindowMs);
+                float maxMs = MathF.Max(120f, _maxWindowMs);
                 CreateBand("Bad", 1f, new Color(1f, 0.35f, 0.2f, 0.28f), rangeShape);
                 CreateBand("Good", _goodWindowMs / maxMs, new Color(1f, 0.85f, 0.2f, 0.35f), rangeShape);
                 CreateBand("Great", _greatWindowMs / maxMs, new Color(0.25f, 0.95f, 0.45f, 0.42f), rangeShape);
@@ -260,7 +262,7 @@ namespace PIURiseCustom
                 {
                     var img = CreateImage($"Tick_{i}", _judgeRoot.transform, tickSize, Vector2.zero, Color.clear);
                     img.gameObject.SetActive(false);
-                    _ticks[i] = new TickData { Img = img, Time = -10f };
+                    _ticks[i] = new TickData { Img = img, Time = -10f, Active = false };
                 }
             }
 
@@ -304,7 +306,7 @@ namespace PIURiseCustom
 
         private static void CreateBand(string name, float ratio, Color col, int shape)
         {
-            ratio = Mathf.Clamp01(ratio);
+            ratio = Math.Clamp(ratio, 0f, 1f);
             Vector2 sz = _barVertical ? new Vector2(_barW, _barH * ratio) : new Vector2(_barW * ratio, _barH);
             CreateImage(name, _judgeRoot.transform, sz, Vector2.zero, col, shape);
         }
@@ -312,6 +314,10 @@ namespace PIURiseCustom
         public static void UpdateOverlay()
         {
             if (!IsInStage)
+                return;
+
+            // 오버레이 기능이 전부 꺼져 있고 만든 캔버스도 없으면 매 프레임 MainStage/StageController 조회(IL2CPP 호출)조차 하지 않는다
+            if (_canvasObj is null && !SaveCustomConfig.EnableJudgmentBar && !SaveCustomConfig.EnableKeyViewer && !SaveCustomConfig.LaneCoverDebug)
                 return;
 
             // 일시정지 나가기 등으로 MainStage가 비활성/파괴된 경우 선곡창에 오버레이가 남지 않도록 즉시 정리
@@ -338,17 +344,20 @@ namespace PIURiseCustom
                     float now = Time.unscaledTime;
                     for (int i = 0; i < MaxTicks; i++)
                     {
+                        if (!_ticks[i].Active) continue;
                         var img = _ticks[i].Img;
-                        if (img == null || !img.gameObject.activeSelf) continue;
+                        if (img is null) continue;
                         float age = now - _ticks[i].Time;
                         if (age > 2.5f)
                         {
                             img.gameObject.SetActive(false);
+                            _ticks[i].Active = false;
                         }
                         else
                         {
                             Color c = img.color;
-                            c.a = Mathf.Clamp01(1f - age / 2.5f);
+                            float a = 1f - age / 2.5f;
+                            c.a = a < 0f ? 0f : a;
                             img.color = c;
                         }
                     }
@@ -387,8 +396,8 @@ namespace PIURiseCustom
                         judgeGuiY = Screen.height - js.y;
                         scrollUp = judgeGuiY < Screen.height * 0.5f;
                         laneH = scrollUp
-                            ? Mathf.Max(200f, Screen.height - judgeGuiY)
-                            : Mathf.Max(200f, judgeGuiY);
+                            ? MathF.Max(200f, Screen.height - judgeGuiY)
+                            : MathF.Max(200f, judgeGuiY);
                     }
 
                     if (judgeGuiY >= 0f && Screen.height > 0)
