@@ -13,16 +13,45 @@ namespace PIURiseCustom
         // PlayBase.LoadStep에서 HWA_ 커스텀 곡을 템플릿 ID로 우회 통과시킬 때 실제 팩을 전달하는 슬롯
         private static CustomPack _pendingCustomPack;
 
-        private static string GetCurrentSongId()
+        private static string GetCurrentSongId() => Util.CurrentSongId();
+
+        // ===== 오디오 바이트 캐시 (최근 2개) =====
+        // 선곡 화면에서 곡을 오갈 때마다, 그리고 프리뷰 → 본게임 진입 때 같은 music.ogg를 메인 스레드에서 다시 통째로 읽어
+        // 커서 이동이 끊기던 문제를 줄인다. 파일 크기·수정 시각이 바뀌면 다시 읽는다.
+        private const long AudioCacheMaxBytes = 64L * 1024 * 1024;
+        private sealed class AudioCacheEntry
         {
-            try
+            public string Path;
+            public long Length;
+            public DateTime WriteUtc;
+            public byte[] Bytes;
+        }
+        private static readonly AudioCacheEntry[] _audioCache = new AudioCacheEntry[2];
+
+        private static byte[] ReadAudioBytesCached(string path)
+        {
+            var fi = new FileInfo(path);
+            long len = fi.Length;
+            DateTime writeUtc = fi.LastWriteTimeUtc;
+
+            for (int i = 0; i < _audioCache.Length; i++)
             {
-                var pd = PlayerData.Instance;
-                if (pd != null)
-                    return pd.Song.ID;
+                var e = _audioCache[i];
+                if (e != null && e.Length == len && e.WriteUtc == writeUtc &&
+                    string.Equals(e.Path, path, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (i != 0) { _audioCache[i] = _audioCache[0]; _audioCache[0] = e; } // MRU 앞으로
+                    return e.Bytes;
+                }
             }
-            catch { }
-            return null;
+
+            byte[] bytes = File.ReadAllBytes(path);
+            if (bytes.LongLength <= AudioCacheMaxBytes)
+            {
+                _audioCache[1] = _audioCache[0];
+                _audioCache[0] = new AudioCacheEntry { Path = path, Length = len, WriteUtc = writeUtc, Bytes = bytes };
+            }
+            return bytes;
         }
 
         private static string GetCurrentPlayType()
@@ -57,21 +86,29 @@ namespace PIURiseCustom
                 if (!ModConfig.CustomEnabled.Value)
                     return;
 
-                string effectiveSongId = string.IsNullOrEmpty(songId) ? GetCurrentSongId() : songId;
-                var pack = CustomPackManager.Resolve(effectiveSongId, playType, lv);
-                if (pack == null)
-                    return;
-
-                _pendingCustomPack = pack;
-
-                // hwa 독립 곡은 DataAssets 해시 파일이 없으므로 공식 템플릿 곡으로 파일 읽기 관문만 통과
-                if (CustomPackManager.IsCatalogSongId(effectiveSongId) &&
-                    !string.IsNullOrEmpty(SongTableInjectorPatches.TemplateOfficialSongId))
+                try
                 {
-                    songId = SongTableInjectorPatches.TemplateOfficialSongId;
-                    lv = SongTableInjectorPatches.TemplateOfficialLevel;
-                    playType = SongTableInjectorPatches.TemplateOfficialPlayType;
-                    Mod.Log.Msg($"[CustomChart] 독립 곡 {effectiveSongId} → 템플릿({songId} {playType} Lv.{lv}) 경유 로드");
+                    string effectiveSongId = string.IsNullOrEmpty(songId) ? GetCurrentSongId() : songId;
+                    var pack = CustomPackManager.Resolve(effectiveSongId, playType, lv);
+                    if (pack == null)
+                        return;
+
+                    _pendingCustomPack = pack;
+
+                    // hwa 독립 곡은 DataAssets 해시 파일이 없으므로 공식 템플릿 곡으로 파일 읽기 관문만 통과
+                    if (CustomPackManager.IsCatalogSongId(effectiveSongId) &&
+                        !string.IsNullOrEmpty(SongTableInjectorPatches.TemplateOfficialSongId))
+                    {
+                        songId = SongTableInjectorPatches.TemplateOfficialSongId;
+                        lv = SongTableInjectorPatches.TemplateOfficialLevel;
+                        playType = SongTableInjectorPatches.TemplateOfficialPlayType;
+                        Mod.Log.Msg($"[CustomChart] 독립 곡 {effectiveSongId} → 템플릿({songId} {playType} Lv.{lv}) 경유 로드");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _pendingCustomPack = null;
+                    Mod.Log.Warning($"[CustomChart] LoadStep 전처리 오류(원본 경로로 진행): {ex.Message}");
                 }
             }
         }
@@ -149,7 +186,7 @@ namespace PIURiseCustom
                 try
                 {
                     Mod.Log.Msg($"[CustomBGM] '{pack.Title}' 오디오 주입: {Path.GetFileName(audioPath)} (prefix={prefix}, song={name})");
-                    byte[] rawBytes = File.ReadAllBytes(audioPath);
+                    byte[] rawBytes = ReadAudioBytesCached(audioPath);
                     var ilBytes = new Il2CppStructArray<byte>(rawBytes);
 
                     __instance.LoadMusic(ilBytes);
@@ -335,7 +372,7 @@ namespace PIURiseCustom
                 if (!ModConfig.CustomEnabled.Value || __instance == null || content == null)
                     return;
 
-                var pack = CustomPackManager.ResolveBySongId(content.Song.ID);
+                var pack = CustomPackManager.ResolveBySongId(Util.SongId(content.Song));
                 if (pack == null || string.IsNullOrEmpty(pack.JacketPath))
                     return;
 

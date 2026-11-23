@@ -104,7 +104,7 @@ namespace PIURiseCustom
             for (int i = 0; i < loader._contents.Count; i++)
             {
                 var item = loader._contents[i];
-                if (item != null && CustomPackManager.IsCatalogSongId(item.Song.ID))
+                if (item != null && CustomPackManager.IsCatalogSongId(Util.SongId(item.Song)))
                     result.Add(item);
             }
             return result;
@@ -119,9 +119,16 @@ namespace PIURiseCustom
                 if (!ModConfig.CustomEnabled.Value || __instance == null || __instance._channelCache == null)
                     return;
 
-                var list = BuildCustomContentList(__instance);
-                __instance._channelCache[CUSTOM_CHANNEL] = list;
-                Mod.Log.Msg($"[CustomChannel] CUSTOM 채널 캐시 등록 완료: {list.Count}곡");
+                try
+                {
+                    var list = BuildCustomContentList(__instance);
+                    __instance._channelCache[CUSTOM_CHANNEL] = list;
+                    Mod.Log.Msg($"[CustomChannel] CUSTOM 채널 캐시 등록 완료: {list.Count}곡");
+                }
+                catch (Exception ex)
+                {
+                    Mod.Log.Warning($"[CustomChannel] CUSTOM 채널 캐시 등록 실패: {ex.Message}");
+                }
             }
         }
 
@@ -148,10 +155,18 @@ namespace PIURiseCustom
                 if (channel != CUSTOM_CHANNEL)
                     return true;
 
-                if (__instance._channelCache != null && __instance._channelCache.ContainsKey(CUSTOM_CHANNEL))
-                    __result = __instance._channelCache[CUSTOM_CHANNEL];
-                else
-                    __result = BuildCustomContentList(__instance);
+                try
+                {
+                    if (__instance._channelCache != null && __instance._channelCache.ContainsKey(CUSTOM_CHANNEL))
+                        __result = __instance._channelCache[CUSTOM_CHANNEL];
+                    else
+                        __result = BuildCustomContentList(__instance);
+                }
+                catch (Exception ex)
+                {
+                    Mod.Log.Warning($"[CustomChannel] CUSTOM 목록 조회 실패 → 빈 목록: {ex.Message}");
+                    __result = new Il2CppSystem.Collections.Generic.List<SongListContent>();
+                }
 
                 return false;
             }
@@ -166,23 +181,30 @@ namespace PIURiseCustom
                 if (!ModConfig.CustomEnabled.Value || CustomPackManager.CatalogSongs.Count == 0)
                     return;
 
-                var list = __instance.channelList;
-                if (list == null)
-                    return;
-
-                bool exists = false;
-                int allTunesIdx = -1;
-                for (int i = 0; i < list.Count; i++)
+                try
                 {
-                    if (list[i] == CUSTOM_CHANNEL) exists = true;
-                    if (list[i] == CommonEnums.Channel.ALLTUNES) allTunesIdx = i;
+                    var list = __instance?.channelList;
+                    if (list == null)
+                        return;
+
+                    bool exists = false;
+                    int allTunesIdx = -1;
+                    for (int i = 0; i < list.Count; i++)
+                    {
+                        if (list[i] == CUSTOM_CHANNEL) exists = true;
+                        if (list[i] == CommonEnums.Channel.ALLTUNES) allTunesIdx = i;
+                    }
+
+                    if (!exists)
+                    {
+                        int insertAt = allTunesIdx >= 0 ? allTunesIdx + 1 : 0;
+                        list.Insert(insertAt, CUSTOM_CHANNEL);
+                        Mod.Log.Msg($"[CustomChannel] NewChannelListUI.channelList[{insertAt}]에 CUSTOM 탭 추가 완료");
+                    }
                 }
-
-                if (!exists)
+                catch (Exception ex)
                 {
-                    int insertAt = allTunesIdx >= 0 ? allTunesIdx + 1 : 0;
-                    list.Insert(insertAt, CUSTOM_CHANNEL);
-                    Mod.Log.Msg($"[CustomChannel] NewChannelListUI.channelList[{insertAt}]에 CUSTOM 탭 추가 완료");
+                    Mod.Log.Warning($"[CustomChannel] CUSTOM 탭 추가 실패(기존 채널은 정상): {ex.Message}");
                 }
             }
         }

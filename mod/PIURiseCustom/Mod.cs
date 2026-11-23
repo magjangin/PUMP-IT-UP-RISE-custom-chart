@@ -3,24 +3,32 @@ using Il2Cpp;
 using Il2CppPIUMobileStepDLL;
 using MelonLoader;
 
-[assembly: MelonInfo(typeof(PIURiseCustom.Mod), "PIURiseCustom", "0.3.0", "화영왕")]
+[assembly: MelonInfo(typeof(PIURiseCustom.Mod), "PIURiseCustom", PIURiseCustom.Mod.Version, "화영왕")]
 [assembly: MelonGame("ANDAMIRO", "PUMP IT UP RISE")]
+// 일괄 PatchAll 대신 SafePatcher가 패치 클래스별로 격리 적용한다 (업데이트 내성, SafePatcher.cs 참고)
+[assembly: HarmonyDontPatchAll]
 
 namespace PIURiseCustom
 {
     public class Mod : MelonMod
     {
+        public const string Version = "0.3.1";
+
         internal static MelonLogger.Instance Log;
         internal static readonly int[] JudgeCounts = new int[5];
 
         public override void OnInitializeMelon()
         {
             Log = LoggerInstance;
+            SafePatcher.LogGameBuildInfo();
+
             ModConfig.Init();
             SaveCustomConfig.InitAndLoad();
             CustomPackManager.EnsureSampleFoldersAndScan();
 
-            Log.Msg($"PIURiseCustom v0.3.0 loaded | Offline={SaveCustomConfig.OfflineMode} | Custom={SaveCustomConfig.CustomEnabled} | Root={ModConfig.ResolvedCustomRoot} | Songs={CustomPackManager.CatalogSongs.Count}");
+            SafePatcher.ApplyAll(HarmonyInstance);
+
+            Log.Msg($"PIURiseCustom v{Version} loaded | Offline={SaveCustomConfig.OfflineMode} | Custom={SaveCustomConfig.CustomEnabled} | Root={ModConfig.ResolvedCustomRoot} | Songs={CustomPackManager.CatalogSongs.Count} | Patches={SafePatcher.AppliedCount} (실패 {SafePatcher.FailedPatches.Count})");
         }
 
         public override void OnSceneWasLoaded(int buildIndex, string sceneName)
@@ -47,7 +55,8 @@ namespace PIURiseCustom
     {
         private static void Prefix()
         {
-            SaveCustomConfig.ReloadIfChanged();
+            try { SaveCustomConfig.ReloadIfChanged(); }
+            catch (System.Exception ex) { Mod.Log.Warning($"[Config] 핫리로드 오류: {ex.Message}"); }
         }
 
         private static void Postfix()
@@ -55,7 +64,7 @@ namespace PIURiseCustom
             Mod.ResetCounts();
             InGameOverlayUI.ResetForNewStage();
             NoteVisualPatches.ResetForNewStage();
-            CustomMarathonPatches.OnCustomSongStarted(PlayerData.Instance?.Song?.ID);
+            CustomMarathonPatches.OnCustomSongStarted(Util.CurrentSongId());
             Mod.Log.Msg("MainStage.Start — 인게임 시작");
         }
     }

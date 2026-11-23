@@ -23,9 +23,12 @@ namespace PIURiseCustom
             {
                 lock (_captureLock)
                 {
-                    string safeReq = (req ?? "").Replace("\r", "\\r").Replace("\n", "\\n").Replace("\"", "\\\"");
-                    string safeRes = (res ?? "").Replace("\r", "\\r").Replace("\n", "\\n").Replace("\"", "\\\"");
-                    string line = $"{{\"ts\":\"{DateTime.UtcNow:O}\",\"kind\":\"{kind}\",\"cmd\":\"{cmd}\",\"req\":\"{safeReq}\",\"res\":\"{safeRes}\"}}";
+                    // 예전 수동 이스케이프는 역슬래시·제어문자를 처리하지 않아 JSONL이 깨졌다 → 표준 JSON 문자열 인코딩 사용
+                    string line = "{\"ts\":" + JsonString(DateTime.UtcNow.ToString("O")) +
+                                  ",\"kind\":" + JsonString(kind) +
+                                  ",\"cmd\":" + JsonString(cmd) +
+                                  ",\"req\":" + JsonString(req) +
+                                  ",\"res\":" + JsonString(res) + "}";
                     File.AppendAllText(CaptureFilePath, line + Environment.NewLine);
                 }
             }
@@ -33,6 +36,30 @@ namespace PIURiseCustom
             {
                 Mod.Log?.Warning($"[NetCapture] 기록 실패: {ex.Message}");
             }
+        }
+
+        private static string JsonString(string s)
+        {
+            if (s == null) return "null";
+            var sb = new System.Text.StringBuilder(s.Length + 2);
+            sb.Append('"');
+            foreach (char c in s)
+            {
+                switch (c)
+                {
+                    case '"': sb.Append("\\\""); break;
+                    case '\\': sb.Append("\\\\"); break;
+                    case '\n': sb.Append("\\n"); break;
+                    case '\r': sb.Append("\\r"); break;
+                    case '\t': sb.Append("\\t"); break;
+                    default:
+                        if (c < 0x20) sb.Append("\\u").Append(((int)c).ToString("x4"));
+                        else sb.Append(c);
+                        break;
+                }
+            }
+            sb.Append('"');
+            return sb.ToString();
         }
 
         private static string BuildStubResponse(NetCommand cmd)

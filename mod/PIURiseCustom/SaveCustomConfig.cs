@@ -181,7 +181,7 @@ LaneCoverDebug=0
                 _lastWriteUtc = writeUtc;
                 var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-                foreach (string raw in File.ReadAllLines(ConfigPath, Encoding.UTF8))
+                foreach (string raw in Util.ReadAllLinesSmart(ConfigPath))
                 {
                     string line = raw.Trim();
                     if (string.IsNullOrEmpty(line) || line.StartsWith("#") || line.StartsWith("//"))

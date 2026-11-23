@@ -2,7 +2,7 @@
 
 **PUMP IT UP RISE** (Steam / Unity 2022.3 IL2CPP)용 MelonLoader 기반 **커스텀 차트 · 미디어 주입 · 오프라인 모드** 통합 프로젝트입니다.
 
-- **현재 버전:** `v0.3.0`
+- **현재 버전:** `v0.3.1`
 - **제작자:** 화영왕 (`magjangin`)
 - **대상 게임:** PUMP IT UP RISE (Steam AppID `2756930`, Build `26399668` 기준 실기 검증)
 - **로더:** MelonLoader `0.7.3` (`net6.0` / IL2CPP)
@@ -12,15 +12,15 @@
 ## 주요 기능
 
 ### 1. 커스텀 곡 & `CUSTOM` 채널 자동 추가
-- 선곡 화면에 **`CUSTOM` 채널 탭**을 자동으로 추가하고, 게임 폴더 내 `hwa/` 디렉터리의 커스텀 곡을 독립 곡(`HWA_0001`~)으로 주입합니다.
+- 선곡 화면에 **`CUSTOM` 채널 탭**을 자동으로 추가하고, 게임 폴더 내 `hwa/` 디렉터리의 커스텀 곡을 독립 곡(곡 ID `990001`~, 폴더 경로 사전순)으로 주입합니다.
 - `TAB` 키로 **5K / 6K** 전환, 로딩 커튼 자켓·난이도 표시, 결과 화면(`DANCE GRADE`) 진입까지 전 구간을 지원합니다.
-- **단축키:**
-  - `F10`: 커스텀 곡 폴더(`hwa/`) 재스캔
-  - `F9`: 커스텀 모드 ON / OFF 토글
+- `hwa/` 폴더에 곡을 추가·삭제한 내용은 **게임을 다시 시작하면** 반영됩니다. (이전 문서의 `F9`/`F10` 단축키는 구현된 적이 없어 삭제했습니다.)
 
 ### 2. 자체 차트 파서 (`.ucs` / `.bms` / `.bme` / `.bml`)
 - 게임 내장 `StepLoader.LoadUserStep`의 멀티블록(변속) 버그를 우회하여 `PIUMobileStepDLL.Step_t` 구조를 직접 구성합니다.
-- `.ucs` 및 5/10키 `.bms`/`.bme`/`.bml` 차트, 롱노트, 변속을 지원합니다.
+- `.ucs`(5/10레인) 및 5키 `.bms`/`.bme`/`.bml`(채널 `16 11 12 13 14` → ↙ ↖ ◎ ↗ ↘), 롱노트(키음 이름 `holdstart`/`홀드시작` 등으로 페어링), 변속을 지원합니다.
+- BMS는 노트 위치를 정확히 표현하는 최소 분할을 자동으로 골라 셋잇단(12·24분 등)도 어긋나지 않게 변환합니다.
+- `info.txt`·차트·`config.txt`는 UTF-8 / EUC-KR(CP949) / Shift-JIS를 자동 판별해 읽습니다.
 
 ### 3. 커스텀 BGM · BGA · 자켓 · 로딩 썸네일
 - **BGM:** `.ogg`, `.mp3`, `.wav`, `.flac` (FMOD `MusicPlayer.Load` 직접 로드, 프리뷰 BGM 별도 지원)
@@ -86,15 +86,27 @@ dotnet build "mod/PIURiseCustom/PIURiseCustom.csproj" -c Release -p:GamePath="C:
 
 ---
 
+`Il2CppAssemblies`가 없으면 빌드가 원인 메시지와 함께 바로 멈춥니다. 게임을 MelonLoader로 한 번 실행한 뒤 다시 빌드하세요.
+
+---
+
+## 게임 업데이트 대응
+
+- 모드는 부팅할 때 `MelonLoader/Latest.log`에 Steam 빌드 번호와 게임 버전을 남기고, 검증된 빌드(`26399668` / `1.6.0`)와 다르면 경고합니다.
+- Harmony 패치는 **기능별로 따로 적용**됩니다. 업데이트로 일부 메서드가 바뀌어도 그 기능만 꺼지고 나머지는 동작하며, 로그의 `[Patch] … 실패` 줄에 꺼진 패치 이름이 나옵니다.
+- 점검 순서와 패치별 영향 표: [docs/hooks.md](docs/hooks.md) §4·§5
+
+---
+
 ## 저장소 구조
 
 ```text
 .
 ├─ mod/
-│  ├─ PIURiseCustom/      # 통합 커스텀 차트 · 오프라인 주력 모드 (v0.3.0)
-│  └─ PIURiseSkeleton/    # 읽기 전용 판정 관찰용 최소 스켈레톤 모드
+│  ├─ PIURiseCustom/      # 통합 커스텀 차트 · 오프라인 주력 모드 (v0.3.1)
+│  └─ PIURiseSkeleton/    # 읽기 전용 판정 관찰용 최소 스켈레톤 모드 (PIURiseCustom과 함께 설치하지 말 것)
 ├─ docs/
-│  ├─ hooks.md            # 주요 후킹 타깃 정리
+│  ├─ hooks.md            # 후킹 타깃, 전체 패치 목록, 업데이트 점검 절차
 │  └─ offline_feasibility.md # 오프라인 스텁 설계 분석
 ├─ AGENTS.md              # 에이전트/개발 인수인계 문서
 ├─ CLAUDE.md              # @AGENTS.md 연결 파일

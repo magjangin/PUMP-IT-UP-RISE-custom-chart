@@ -1,11 +1,12 @@
 # PUMP IT UP RISE — 인수인계 문서 (AGENTS.md)
 
-> 작성 2026-11-22. 단계별 진행 기록은 [PROGRESS.md](PROGRESS.md), 후킹 후보는 [docs/hooks.md](docs/hooks.md).
+> 작성 2026-11-22, 최신화 2026-11-23 (v0.3.1 감사·업데이트 내성 작업). 단계별 진행 기록은 [PROGRESS.md](PROGRESS.md), 훅 전체 목록·업데이트 점검 절차는 [docs/hooks.md](docs/hooks.md).
 > **확인** = 디스크·로그·의사코드로 직접 본 것, **추정** = 해석.
 
 ## 1. 게임 버전 및 고정 여부
 - Steam appid 2756930, **buildid 26399668**, 게임 버전 1.6.0 (MelonLoader 로그), GameAssembly.dll 수정일 2025-11-05 (확인)
 - **고정 안 됨**: appmanifest_2756930.acf `AutoUpdateBehavior 0`(자동 업데이트). DepotDownloader 다운그레이드·.acf 패치 차단은 하지 않았다
+- 모드가 부팅 때 `[Build] Steam buildid=…, 게임 버전=…`를 로그에 남기고, 검증 빌드(26399668 / 1.6.0)와 다르면 경고한다 (`SafePatcher.LogGameBuildInfo`, 상수 `VerifiedSteamBuildId`/`VerifiedGameVersion`). 새 빌드에서 실기 검증을 마치면 이 상수와 이 절을 함께 갱신할 것
 - 업데이트 시 RVA(docs/hooks.md)는 전부 무효. Harmony 패치는 이름 기반이라 메서드 이름이 유지되면 동작, MelonLoader가 interop 자동 재생성
 
 ## 2. 런타임 백엔드 및 디컴파일 경로
@@ -15,16 +16,29 @@
 - 시그니처: `src_dummy\` (ilspycmd, 본문 없음, RVA 주석)
 - interop(모드 참조용): `<게임>\MelonLoader\Il2CppAssemblies\` (게임 첫 실행 때 MelonLoader가 생성)
 - 의사코드: `slices\*.dll`(pe_slice) → REA(Ghidra) → `logs\*.rea.c`
+- 위 분석 산출물 폴더는 전부 `.gitignore` 대상(개인 PC 전용)
 
 ## 3. 설계 의도와 우회 사유 (Rationale)
 - 스켈레톤은 **읽기 전용 Postfix**만 건다.
 - 판정 관찰 지점으로 `JudgeNote`가 아니라 `JudgeStep_PostProcess`를 택한 이유: 판정 결과(JUDGE)가 확정된 뒤 집계하는 단일 지점이라 롱노트·라인 판정까지 한곳에서 잡힌다(의사코드 확인)
 - 모드 배포는 `-p:Deploy=true`일 때만 Mods\로 복사 — 기본 빌드는 게임 폴더를 건드리지 않게 하려는 것
+- **패치 적용을 MelonLoader에 맡기지 않는 이유 (v0.3.1)**: 기본 `PatchAll`은 패치 클래스 하나가 실패하면(업데이트로 대상 메서드가 사라짐 등) 예외로 멈춰 뒤의 패치가 빠지거나 모드 초기화 자체가 실패한다. 그래서 `[assembly: HarmonyDontPatchAll]` + `SafePatcher.ApplyAll`이 `[HarmonyPatch]` 클래스마다 `CreateClassProcessor(t).Patch()`를 따로 try/catch로 적용한다. 실패한 패치 이름은 `[Patch] … 실패 N개: …` 로그로 남고 나머지 기능은 살아 있다
+- **IL2CPP Prefix 예외 = 원본 메서드 건너뜀**: Il2CppInterop 트램펄린은 패치 본문 예외를 삼키고 기본값을 반환한다. 즉 Prefix가 NRE를 내면 원본(`CacheSongTable`, `IngameSongInfoUI.OnShow`, `PlayBase.LoadStep` 등)도 실행되지 않는다. 그래서 게임 흐름의 관문에 걸린 Prefix는 전부 try/catch로 감싸고, `Song.ID` 같은 널 가능 접근은 `Util.SongId`/`Util.CurrentSongId`를 거친다
+- `config.txt`(SaveCustomKey)가 설정 원본이다. `ModConfig`(MelonPreferences)의 `OfflineMode`/`CustomEnabled`/`CustomChartOffsetMs`는 config.txt를 읽을 때마다 덮어써진다
+- 텍스트 파일(config.txt, info.txt, 차트)은 `Util.ReadAllLinesSmart`로 읽는다: BOM → 엄격 UTF-8 → CP949 → Shift-JIS → Latin1 순. EUC-KR로 저장한 info.txt 제목이 깨지지 않게 하려는 것
+- BMS 변환 분할(Split)은 고정 16이 아니라 노트·변속 위치를 정확히 표현하는 최소값(4,8,12,16,24,32,48,64,96 중)을 고른다. 셋잇단 양자화 오류를 없애고, 행×레인마다 Il2Cpp `Note` 객체를 만드는 비용을 줄이기 위함(실곡 `hwa2.bms`: 4800행 → 1200행)
+- 커스텀 곡 ID는 `990001`부터 경로 사전순으로 부여한다(README 구버전의 `HWA_0001` 표기는 오기). 폴더를 추가·삭제하면 뒤쪽 곡 ID가 밀린다
 
 ## 4. 핵심 훅 시그니처와 주입 파이프라인
-- 주입: version.dll(MelonLoader) → Mods\PIURiseSkeleton.dll → `HarmonyPatch` 자동 적용
+- 주입: version.dll(MelonLoader) → Mods\PIURiseCustom.dll → `OnInitializeMelon`에서 `SafePatcher.ApplyAll(HarmonyInstance)` (v0.3.1 기준 **61개 패치 클래스, 실기 부팅 61/61 적용 확인**)
 - interop 네임스페이스: 전역 타입 `Il2Cpp.MainStage`, 네임스페이스 타입 `Il2CppPIUMobileStepDLL.PUMPPlayer` (확인)
-- 훅:
+- 커스텀 곡 파이프라인 요약 (전체 표는 docs/hooks.md §4):
+  1. `Mk2SongLoader.CacheSongTable/CacheArcadeSongTable` Prefix → `PIUDataBase.songTable`에 `Song` 주입
+  2. `Mk2SongLoader.CacheAllChannels/IsEmpty/GetChannelSongList`, `NewChannelListUI.InitializeListForBoxes` → `CUSTOM` 채널(enum 99)
+  3. `MainStation.GAMESTART` Prefix에서 템플릿 공식 곡으로 바꿔 통과 → Postfix에서 `PlayerData.Song/SelectedLevel/Curtain` 복원
+  4. `PlayBase.LoadStep` Prefix(템플릿 경유) → `Step.Load(byte[])` Postfix에서 `nNote/nBlock/pBlock`만 자체 파서 결과로 교체 후 `InitData()`
+  5. `AudioManager.LoadMusicSound` → `LoadMusic(byte[])`, `BGAPlayer.Load` → `VideoPlayer.url = file://…`
+- 스켈레톤 훅:
   - `Il2Cpp.MainStage.Start()` RVA 0x67F5C0 — 스테이지 시작, 카운터 초기화
   - `Il2CppPIUMobileStepDLL.PUMPPlayer.JudgeStep_PostProcess(int bank, JUDGE judgement, int noteCount, bool bJudgeLong, float factor)` RVA 0x79A7B0 — 판정 집계
   - `Il2Cpp.MainStage.SaveResult()` RVA 0x680FB0 — 곡 종료·결과 진입, 판정 카운트 로그
@@ -40,7 +54,9 @@
 - `getGameStartTime` 응답을 JSON으로 주면 `DateTime.Parse` 예외 → 순수 ISO-8601 문자열(`yyyy-MM-ddTHH:mm:ssZ`) 반환
 - `StepLoader.LoadUserStep` 게임 내장 UCS 파서는 멀티블록(변속) 시 `pBlock[1..]`이 `null`이 되는 원본 버그 존재 → 자체 `CustomChartParsers`로 `Step_t` 직접 구성
 - `MainStage.PauseAllow` getter 패치만으로는 부분 채보 마지막 노트 이후 ESC 일시정지 해제 불가(IL2CPP가 `InGameUI.callMenu` 내부에 `get_PauseAllow`를 인라인함) → **`InGameUI.callMenu`를 직접 패치**해 호출 중 `SoloPlayer._showNoteEnd` 임시 해제할 것
-- 인게임 실시간 키 입력은 구식 `KeyInput.isButtonPress`가 아니라 Unity InputSystem 기반 **`GameInputManager.Instance`**(`keyTbl5k`/`keyTbl5kSub`/`keyTbl6k`/`keyTbl6kSub` + `GetButtonState`)에서 읽을 것
+- 인게임 실시간 키 입력은 구식 `KeyInput.isButtonPress`가 아니라 Unity InputSystem 기반 **`GameInputManager.Instance`**(`keyTbl5k`/`keyTbl5kSub`/`keyTbl6k`/`keyTbl6kSub` + `GetButtonState`)에서 읽을 것. (v0.3.1에서 미사용 `KeyInput.Awake` 추적 훅 제거)
+- `F9`(ON/OFF)·`F10`(재스캔) 단축키는 문서에만 있었고 **구현된 적이 없다**(v0.3.1 감사에서 확인, 문서에서 삭제). F10을 구현하려면 단순 `CustomPackManager.Scan()`으로는 안 된다: 곡 ID가 스캔 순서로 다시 매겨져 이미 주입된 `songTable` 항목과 어긋나고, 새 곡은 `Mk2SongLoader.CacheSongTable`을 다시 돌리기 전엔 목록에 안 나온다
+- 컴퓨터 제어로 인게임 플레이를 검증하려 할 때 다른 Claude 세션이 화면 제어를 쥐고 있으면 `request_access`가 거부된다 → 로그 기반 부팅 검증 + 오프라인 재현 스크립트로 대체했음
 
 ## 6. 빌드 명령 및 Mods/ 배포 경로
 - **통합 커스텀·오프라인 모드 (`PIURiseCustom`, 주력)**:
@@ -48,21 +64,31 @@
 dotnet build "H:\source\repos\PUMP IT UP RISE-unity-il2cpp\mod\PIURiseCustom\PIURiseCustom.csproj" -c Release -p:Deploy=true
 ```
   - 산출물: `mod\PIURiseCustom\bin\Release\PIURiseCustom.dll` → 배포: `H:\steam\steamapps\common\PUMP IT UP RISE\Mods\`
-  - 커스텀 곡 폴더: `H:\steam\steamapps\common\PUMP IT UP RISE\hwa\` (DEFLATE/STARGAZER 표준 `hwa/<곡>/` 또는 `hwa/<앨범>/<곡>/` 규격, `info.txt`, `*.ucs`/`*.bms`, `music.ogg`/`*.mp3`, `video.mp4`/`*.webm`, `Thumbnail.png`/`cover.png`)
+  - interop가 없으면(게임 업데이트 직후 등) 빌드가 `CheckGameReferences` 타깃에서 원인 메시지와 함께 즉시 실패한다 → 게임을 1회 실행해 재생성 후 재빌드
+  - 커스텀 곡 폴더: `H:\steam\steamapps\common\PUMP IT UP RISE\hwa\` (DEFLATE/STARGAZER 표준 `hwa/<곡>/` 또는 `hwa/<앨범>/<곡>/` 규격, `info.txt`, `*.ucs`/`*.bms`, `music.ogg`/`*.mp3`, `video.mp4`/`*.webm`, `Thumbnail.png`/`cover.png`). 폴더 변경은 게임 재시작 시 반영
   - 설정 파일: `H:\steam\steamapps\common\PUMP IT UP RISE\SaveCustomKey\config.txt` (Sixtar Gate `SaveCustomKey/config.txt` 전 항목 호환, `MainStage.Start` 시 자동 핫리로드: `AutoPlay`, `AllPerfect`, `BlockSave`, `MaxScore`, 판정바, 키뷰어, 노트 흔들림, 속도 카오스, `CustomNotes/`, 서든/히든, 페이드 인/아웃, 커스텀 마라톤, `LaneCoverDebug`)
-  - 선곡 화면 `CUSTOM` 채널 탭 자동 추가, 단축키 `F10`(재스캔) / `F9`(ON/OFF 토글)
+  - 선곡 화면 `CUSTOM` 채널 탭 자동 추가
 - **읽기 전용 스켈레톤 (`PIURiseSkeleton`)**:
 ```powershell
 dotnet build "H:\source\repos\PUMP IT UP RISE-unity-il2cpp\mod\PIURiseSkeleton\PIURiseSkeleton.csproj" -c Release
 ```
+  - PIURiseCustom과 같은 훅을 중복으로 걸므로 Mods\에 함께 두지 않는다
 - 실행: `steam://rungameid/2756930` (exe 직접 실행 시 `SteamAPI_RestartAppIfNecessary`로 종료됨), 로그: `<게임>\MelonLoader\Latest.log`
+- 부팅 정상 판정 로그: `[Build] …`, `[Patch] Harmony 패치 61/61개 적용 완료`, `[OfflineStub] SteamManager.CheckTicket 가로챔`
 
 ## 6-1. 오프라인 버전 구현 (`OfflineStubPatches.cs`)
 - 정적 분석은 [docs/offline_feasibility.md](docs/offline_feasibility.md).
 - 구현 훅: `SteamManager.CheckTicket`, `NetworkManager.StartJwtCoroutine`, `SendHeartBeatRoutine`, `SendAuth`, `NetworkManager.Send`(private), `MaintenanceManager.TitleCheck`/`MaintenanceCheck`/`AlramNetworkError`, `PIUUtil.CommonUtil.SetPlayLogAtServer`
+- 응답 캡처(`OfflineMode=0` + MelonPreferences `CaptureOnlineResponses=true`): `<게임>\MelonLoader\net_capture.jsonl`. v0.3.1부터 표준 JSON 이스케이프(이전 버전 캡처는 역슬래시가 이스케이프되지 않아 JSON 파서가 실패할 수 있음)
 
-## 7. 검증 상태 (2026-11-22 실기 확인)
-- **확인**: 오프라인 부팅 → 타이틀 → 선곡 `CUSTOM` 탭 표시 → `hwa/` 하위폴더 자켓(`MSListBox`/`EyeCatchUI`/`IngameSongInfoUI`/`ResultDefaultGameInfo`) → 프리뷰 BGA(`video.mp4`, 음소거) & 프리뷰 BGM(`music.ogg`) → `TAB` 5K/6K 전환 → `Enter` 로딩 커튼(자켓·난이도 복원) → 인게임 BGA(`file://`, 음소거) & BGM(FMOD `MusicPlayer.Load`) 재생 → `.bms` 커스텀 차트 노트 판정·부분 채보 ESC 일시정지·실시간 키뷰어(`GameInputManager`)·판정바(중앙선 1개) → 완주 후 결과 화면(`DANCE GRADE`) 진입까지 전 구간 정상 동작 확인
-- **미확인**: `.ucs` 멀티블록(변속) 실제 차트 실기 검증
+## 7. 검증 상태
+- **확인 (2026-11-22 실기, v0.3.0)**: 오프라인 부팅 → 타이틀 → 선곡 `CUSTOM` 탭 표시 → `hwa/` 하위폴더 자켓(`MSListBox`/`EyeCatchUI`/`IngameSongInfoUI`/`ResultDefaultGameInfo`) → 프리뷰 BGA(`video.mp4`, 음소거) & 프리뷰 BGM(`music.ogg`) → `TAB` 5K/6K 전환 → `Enter` 로딩 커튼(자켓·난이도 복원) → 인게임 BGA(`file://`, 음소거) & BGM(FMOD `MusicPlayer.Load`) 재생 → `.bms` 커스텀 차트 노트 판정·부분 채보 ESC 일시정지·실시간 키뷰어(`GameInputManager`)·판정바(중앙선 1개) → 완주 후 결과 화면(`DANCE GRADE`) 진입까지 전 구간 정상 동작 확인
+- **확인 (2026-11-23 실기, v0.3.1)**: 부팅 → `[Build] 26399668 / 1.6.0` 일치 → `[Patch] 61/61` → hwa 스캔 1곡 → 오프라인 CheckTicket·Send 스텁으로 타이틀 진입까지. 경고 0 / 오류 0 빌드
+- **확인 (오프라인 재현)**: 새 BMS 분할 선택을 실곡 `hwa2.bms`(오브젝트 358개)에 재현 → Split=4, 위치 오차 0
+- **미확인 (v0.3.1 변경분)**: 선곡~플레이~결과 구간 재실기 — 특히 BMS Split=4 차트 실제 판정·스크롤, 오디오 바이트 캐시(프리뷰→본게임), 키뷰어 상태 변화 시에만 색 갱신. 다음 세션에서 커스텀 곡 1판으로 확인할 것
+- **미확인 (이전부터)**: `.ucs` 멀티블록(변속) 실제 차트 실기 검증
+- **잠재 위험 (코드 감사, 미실측)**:
+  - `NoteVisualPatches`가 노트 원위치를 `GetInstanceID()`로 캐시한다. 게임이 노트 오브젝트를 풀링해 다른 레인에 재사용하면 `NoteSway`/`NoteSpeedChaos` 켰을 때 기준 X가 어긋날 수 있다
+  - `MaxScore` 스케일은 `CalcNewBestScore`/`ACCalcNewBestScore` Postfix에서 `_stat[0,13]`을 곱한다. 이 메서드가 한 곡에 여러 번 불리고 점수를 누적식으로 다시 계산하지 않으면 배율이 중복 적용될 수 있다(`MaxScore=1000000` 기본값이면 무관)
 
 ※ 디컴파일 코드·덤프·추출 리소스는 개인 PC 전용이며 공유하지 않는다.

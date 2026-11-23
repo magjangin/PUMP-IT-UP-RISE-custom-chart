@@ -27,9 +27,6 @@ namespace PIURiseCustom
         private static GameObject _bannerCanvasObj;
         private static TextMeshProUGUI _bannerTmp;
 
-        internal static bool IsMarathonBannerVisible =>
-            SaveCustomConfig.CustomMarathon && _activeResultUI != null && HasRemainingCustomSongs();
-
         public static void OnCustomSongStarted(string songId)
         {
             if (!SaveCustomConfig.CustomMarathon || string.IsNullOrEmpty(songId))
@@ -228,8 +225,7 @@ namespace PIURiseCustom
                 if (!SaveCustomConfig.CustomMarathon)
                     return;
 
-                var song = PlayerData.Instance?.Song;
-                if (song == null || !CustomPackManager.IsCatalogSongId(song.ID))
+                if (!Util.IsCurrentSongCustom())
                     return;
 
                 _activeResultUI = __instance;

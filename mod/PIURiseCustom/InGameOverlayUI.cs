@@ -42,6 +42,8 @@ namespace PIURiseCustom
         // 키뷰어 UI
         private static GameObject _kvRoot;
         private static readonly Image[] _kvBoxes = new Image[5];
+        // 레인별 마지막 표시 상태 (-1 = 아직 칠하지 않음). 상태가 바뀔 때만 Image.color를 써서 매 프레임 interop 호출·UI 재빌드를 줄인다.
+        private static readonly int[] _kvLastState = { -1, -1, -1, -1, -1 };
 
         // LaneCoverDebug UI
         private static GameObject _dbgRoot;
@@ -79,6 +81,7 @@ namespace PIURiseCustom
             _dbgRoot = null;
             for (int i = 0; i < MaxTicks; i++) _ticks[i] = default;
             for (int i = 0; i < _kvBoxes.Length; i++) _kvBoxes[i] = null;
+            for (int i = 0; i < _kvLastState.Length; i++) _kvLastState[i] = -1;
         }
 
         public static void RecordJudgment(float deltaMs, int grade, JudgeTiming timing)
@@ -355,13 +358,16 @@ namespace PIURiseCustom
                 if (_kvRoot != null)
                 {
                     var gim = GameInputManager.Instance;
+                    var tables = KeyTables.Fetch(gim);
                     for (int i = 0; i < 5; i++)
                     {
                         var box = _kvBoxes[i];
                         if (box == null) continue;
-                        bool pressed = IsLanePressed(gim, i);
+                        int state = IsLanePressed(gim, tables, i) ? 1 : 0;
+                        if (state == _kvLastState[i]) continue;
+                        _kvLastState[i] = state;
                         bool isCenter = i == 2;
-                        box.color = pressed
+                        box.color = state == 1
                             ? (isCenter ? SaveCustomConfig.KeyViewerGatePressedColor : SaveCustomConfig.KeyViewerPressedColor)
                             : SaveCustomConfig.KeyViewerNormalColor;
                     }
@@ -437,6 +443,21 @@ namespace PIURiseCustom
             }
         }
 
+        /// <summary>
+        /// 키 테이블 4종을 프레임당 한 번만 읽는다. interop 필드 getter는 읽을 때마다 새 래퍼 객체를 만들어서
+        /// 예전처럼 레인마다 다시 읽으면 프레임당 최대 20개의 래퍼가 생겼다.
+        /// </summary>
+        private struct KeyTables
+        {
+            public Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<GameInputManager.BTN_MEMBER> K5, K5Sub, K6, K6Sub;
+
+            public static KeyTables Fetch(GameInputManager gim)
+            {
+                if (gim == null) return default;
+                return new KeyTables { K5 = gim.keyTbl5k, K5Sub = gim.keyTbl5kSub, K6 = gim.keyTbl6k, K6Sub = gim.keyTbl6kSub };
+            }
+        }
+
         private static bool IsBtnDown(GameInputManager gim, Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<GameInputManager.BTN_MEMBER> tbl, int idx)
         {
             if (gim == null || tbl == null || idx < 0 || idx >= tbl.Length)
@@ -445,17 +466,17 @@ namespace PIURiseCustom
             return st == GameInputManager.INPUT_STATE.PRESS || st == GameInputManager.INPUT_STATE.HOLD;
         }
 
-        private static bool IsLanePressed(GameInputManager gim, int lane)
+        private static bool IsLanePressed(GameInputManager gim, KeyTables t, int lane)
         {
             if (gim == null)
                 return false;
 
-            if (IsBtnDown(gim, gim.keyTbl5k, lane) || IsBtnDown(gim, gim.keyTbl5kSub, lane))
+            if (IsBtnDown(gim, t.K5, lane) || IsBtnDown(gim, t.K5Sub, lane))
                 return true;
 
             // 6K 모드(중앙키 2개 포함 6버튼)도 함께 반영
-            var k6 = gim.keyTbl6k;
-            var k6s = gim.keyTbl6kSub;
+            var k6 = t.K6;
+            var k6s = t.K6Sub;
             if (k6 != null && k6.Length >= 6)
             {
                 if (lane == 2)
