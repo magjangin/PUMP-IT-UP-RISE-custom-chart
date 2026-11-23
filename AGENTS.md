@@ -78,6 +78,7 @@
 - **MaxScore를 `PlayBase.GetScoreAndAccuracy` Postfix에서 스케일** → v0.3.2 1차 시도, 이름과 달리 결과 화면이 이 메서드를 쓰지 않아 한 번도 호출되지 않았다(실기 `[MaxScore]` 로그에 없음). **의사코드·이름만 보고 "점수 출처"를 단정하지 말고, 먼저 로그만 남기는 훅으로 실제 호출 경로를 확인할 것**
 - `ScoreRoller.InitData(string)` Prefix로 표시 문자열을 다시 스케일하던 코드도 제거했다(다른 경로와 겹치면 이중 스케일, `MaxScore<1,000,000`이면 특히 위험)
 - `F9`(ON/OFF)·`F10`(재스캔) 단축키는 문서에만 있었고 **구현된 적이 없다**(v0.3.1 감사에서 확인, 문서에서 삭제). F10을 구현하려면 단순 `CustomPackManager.Scan()`으로는 안 된다: 곡 ID가 스캔 순서로 다시 매겨져 이미 주입된 `songTable` 항목과 어긋나고, 새 곡은 `Mk2SongLoader.CacheSongTable`을 다시 돌리기 전엔 목록에 안 나온다
+- **Windows PowerShell 5.1 + `$ErrorActionPreference = "Stop"`에서 `git push` 실행** → git이 진행 메시지(`To https://…`)를 stderr로 쓰는 것만으로 `NativeCommandError`가 나 스크립트가 멈춘다(2026-11-23 v0.3.5 게시: 태그만 푸시되고 `gh release create` 전에 중단, 릴리즈는 수동 생성). `tools/release.ps1` 게시 단계는 `Continue`로 바꾸고 `$LASTEXITCODE`로만 판정한다. 같은 이유로 `Set-Content -Encoding UTF8`은 BOM을 붙이므로 노트는 BOM 없는 UTF-8로 쓴다
 - 컴퓨터 제어로 인게임 플레이를 검증하려 할 때 다른 Claude 세션이 화면 제어를 쥐고 있으면 `request_access`가 거부된다 → 로그 기반 부팅 검증 + 오프라인 재현 스크립트로 대체했음
 
 ## 6. 빌드 명령 및 Mods/ 배포 경로
@@ -95,7 +96,7 @@ dotnet build "H:\source\repos\PUMP IT UP RISE-unity-il2cpp\mod\PIURiseCustom\PIU
 dotnet build "H:\source\repos\PUMP IT UP RISE-unity-il2cpp\mod\PIURiseSkeleton\PIURiseSkeleton.csproj" -c Release
 ```
   - PIURiseCustom과 같은 훅을 중복으로 걸므로 Mods\에 함께 두지 않는다
-- **릴리즈 (v0.3.5부터, `tools/release.ps1`, 게임 설치 PC에서 실행)**: `Mod.cs`의 `Version`과 `CHANGELOG.md` 최상단 `## [버전]`을 같이 올려 main에 머지한 뒤 `.\tools\release.ps1`(버전 일치 확인 → Release 빌드 `-warnaserror` → `dist\PIURiseCustom-v<버전>.zip` + SHA256 + 노트 초안) → `.\tools\release.ps1 -Publish`(main·깨끗한 트리·origin/main 일치 확인 → 태그 푸시 → `gh release create`). 같은 태그가 있으면 중단. zip에는 DLL·CHANGELOG.md·README.md를 넣는다(v0.3.3~ 릴리즈와 같은 구성). `-Publish`는 `origin`에만 태그를 푸시하므로 `local` 원격에는 `git push local main v<버전>`을 따로 할 것. 빌드에 interop DLL이 필요해 클라우드·CI에서는 못 한다
+- **릴리즈 (v0.3.5부터, `tools/release.ps1`, 게임 설치 PC에서 실행)**: `Mod.cs`의 `Version`과 `CHANGELOG.md` 최상단 `## [버전]`을 같이 올려 main에 머지한 뒤 `.\tools\release.ps1`(버전 일치 확인 → Release 빌드 `-warnaserror` → `dist\PIURiseCustom-v<버전>.zip` + SHA256 + 노트 초안) → `.\tools\release.ps1 -Publish`(main·깨끗한 트리·origin/main 일치 확인 → 태그 푸시 → `gh release create`). 같은 태그가 있으면 중단. zip에는 DLL·CHANGELOG.md·README.md를 넣는다(v0.3.3~ 릴리즈와 같은 구성). `-Publish`는 `local` 원격이 있으면 main·태그도 함께 푸시한다. 빌드에 interop DLL이 필요해 클라우드·CI에서는 못 한다
 - 실행: `steam://rungameid/2756930` (exe 직접 실행 시 `SteamAPI_RestartAppIfNecessary`로 종료됨), 로그: `<게임>\MelonLoader\Latest.log`
 - 부팅 정상 판정 로그: `[Build] …`, `[Patch] Harmony 패치 60/60개 적용 완료`(v0.3.5, v0.3.3~v0.3.4는 61), `PIURiseCustom v0.3.5 loaded`, `[OfflineStub] SteamManager.CheckTicket 가로챔`. 비주얼 기능을 켠 상태로 곡에 들어가면 `[NoteVisual] … LateUpdate 훅을 붙였습니다`
 
