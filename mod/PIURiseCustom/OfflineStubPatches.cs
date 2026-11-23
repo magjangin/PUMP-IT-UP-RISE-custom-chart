@@ -62,6 +62,32 @@ namespace PIURiseCustom
             return sb.ToString();
         }
 
+        /// <summary>
+        /// 오프라인에서는 로그인 응답(JWT의 dlc 목록)이 없어 `PlayerData.Instance.DLCEntrys`(@0x80)가 null로 남는다.
+        /// 멀티 방 생성 창(MultiStageCreateRoomPopup.SetSongInit)이 이 배열을 순회하다 NullReferenceException으로 죽고,
+        /// 그 예외로 호출한 DoCreateRoom이 중단되어 창의 키 등록(SetKeyAction)이 빠져 ESC/ENTER가 먹통이 된다(2026-11-23 실기).
+        /// → null이면 빈 배열(= DLC 없음)로 채운다. 여러 지점에서 불러도 안전(이미 있으면 아무것도 안 함).
+        /// </summary>
+        internal static void EnsureOfflineDlcEntries(string where)
+        {
+            try
+            {
+                if (!ModConfig.OfflineMode.Value)
+                    return;
+
+                var pd = PlayerData.Instance;
+                if (pd != null && pd.DLCEntrys == null)
+                {
+                    pd.DLCEntrys = new Il2CppReferenceArray<DLCEntry>(0);
+                    Mod.Log.Msg($"[OfflineStub] PlayerData.DLCEntrys가 null이라 빈 배열로 채움 ({where})");
+                }
+            }
+            catch (Exception ex)
+            {
+                Mod.Log.Warning($"[OfflineStub] DLCEntrys 보강 실패({where}): {ex.Message}");
+            }
+        }
+
         private static string BuildStubResponse(NetCommand cmd)
         {
             switch (cmd)
@@ -160,6 +186,7 @@ namespace PIURiseCustom
                     }
 
                     callback?.Invoke();
+                    EnsureOfflineDlcEntries("CheckTicket");
                 }
                 catch (Exception ex)
                 {
@@ -304,29 +331,54 @@ namespace PIURiseCustom
             }
         }
 
-        // 8. 멀티플레이 WebSocket(wss://riselive…:3011) 접속 차단 (v0.3.2)
-        //    NetworkManager.InitMultiCon()이 MultiplayController를 만들고 ConnectAsync로 소켓을 연다(선곡 화면 진입 때도 불린다).
-        //    오프라인 모드에서는 이 상위 메서드를 가로채 "영원히 끝나지 않는 Task"를 돌려준다 → 소켓을 열지 않고, 멀티 기능은 연결 대기 상태로 남는다.
-        //    ★ MultiplayController.ConnectAsync(string, CancellationToken)를 직접 후킹하면 안 된다: struct 인자(CancellationToken)를
-        //      Il2CppInterop 트램펄린이 박싱하다 il2cpp_value_box에서 AccessViolationException으로 게임이 죽는다(2026-11-23 실기 크래시).
-        //      인자가 없는 InitMultiCon만 후킹할 것.
+        // 8. 멀티플레이 WebSocket(ws://riselive.piugame.com:3011) 외부 접속 차단 (v0.3.2)
+        //    원본 NetworkManager.InitMultiCon()은 `_mc`가 null이면 MultiplayController를 만들고 Init()·SetHost("ws://riselive…")를 한 뒤,
+        //    `_mc`가 연결 상태가 아니면 ConnectAsync로 소켓을 연다(멀티 메뉴 F2에서 불린다).
+        //    → 오프라인 모드에서는 원본보다 먼저 `_mc`를 접속 대상 127.0.0.1:1(아무도 듣지 않는 로컬 포트)로 만들어 넣는다.
+        //      원본은 `_mc`가 이미 있으니 호스트 설정을 건너뛰고 ConnectAsync를 부르지만, 로컬에서 즉시 거부되어 외부 통신이 0이고
+        //      게임이 "접속 실패" 경로(ConnectAsync 안의 catch → OnError 알림)를 스스로 처리한다.
+        //    ★ 시도했다가 실패한 것 두 가지:
+        //      (1) MultiplayController.ConnectAsync(string, CancellationToken) 직접 후킹 → struct 인자(CancellationToken)를 Il2CppInterop 트램펄린이
+        //          박싱하다 il2cpp_value_box에서 AccessViolationException으로 게임이 죽는다(2026-11-23 실기 크래시).
+        //      (2) InitMultiCon이 끝나지 않는 Task(Task.Delay(-1))를 돌려주게 막기 → CreateRoom 등이 `await InitMultiCon()`에서 영원히 대기해
+        //          방 생성 창의 ESC/ENTER가 먹통이 된다(2026-11-23 실기).
+        private const string OfflineMultiHost = "ws://127.0.0.1:1";
         private static bool _multiBlockLogged;
 
         [HarmonyPatch(typeof(NetworkManager), nameof(NetworkManager.InitMultiCon))]
         internal static class NetworkManager_InitMultiCon_Patch
         {
-            private static bool Prefix(ref Il2CppSystem.Threading.Tasks.Task __result)
+            private static bool Prefix(NetworkManager __instance, ref Il2CppSystem.Threading.Tasks.Task __result)
             {
                 if (!ModConfig.OfflineMode.Value)
                     return true;
 
-                if (!_multiBlockLogged)
+                try
                 {
-                    _multiBlockLogged = true;
-                    Mod.Log.Msg("[OfflineStub] NetworkManager.InitMultiCon 차단 (멀티 WebSocket 접속 안 함, 이후 호출은 로그 생략)");
+                    EnsureOfflineDlcEntries("InitMultiCon");
+
+                    if (__instance._mc == null)
+                    {
+                        var mc = new MultiplayController();
+                        mc.Init();
+                        mc.SetHost(OfflineMultiHost);
+                        __instance._mc = mc;
+
+                        if (!_multiBlockLogged)
+                        {
+                            _multiBlockLogged = true;
+                            Mod.Log.Msg($"[OfflineStub] NetworkManager.InitMultiCon: 멀티 접속 대상을 {OfflineMultiHost}(로컬, 즉시 실패)로 교체 — 외부 서버 접속 안 함");
+                        }
+                    }
+                    return true; // 원본 실행: 접속은 로컬에서 거부되고 게임이 접속 실패를 스스로 처리한다
                 }
-                __result = Il2CppSystem.Threading.Tasks.Task.Delay(-1);
-                return false;
+                catch (Exception ex)
+                {
+                    // `_mc`를 못 만들었는데 원본을 실행하면 실제 서버로 접속하므로, 이 경우에는 접속을 보류 상태로 막는다
+                    Mod.Log.Error($"[OfflineStub] InitMultiCon 로컬 대체 실패 → 접속 보류로 폴백: {ex.Message}");
+                    __result = Il2CppSystem.Threading.Tasks.Task.Delay(-1);
+                    return false;
+                }
             }
         }
 

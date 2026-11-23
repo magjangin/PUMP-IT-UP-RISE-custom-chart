@@ -519,6 +519,63 @@ namespace PIURiseCustom
             }
         }
 
+        // 멀티 방 생성 창(F3): 원본 SetSongInit은 우리가 주입한 커스텀 곡(990001…)을 받으면 NullReferenceException으로 죽는다(2026-11-23 실기).
+        // 예외로 호출한 쪽(MultiStageRoomListUI.DoCreateRoom)이 중단되어 창의 SetKeyAction(키 등록)이 실행되지 않고, 그래서 ESC/ENTER가 먹통이 된다.
+        // → 다른 UI와 같은 방식으로 원본에는 공식 템플릿 곡 ID를 넘겨 정상 실행시키고, Postfix에서 제목·자켓만 커스텀으로 덮어쓴다.
+        [HarmonyPatch(typeof(MultiStageCreateRoomPopup), nameof(MultiStageCreateRoomPopup.SetSongInit))]
+        internal static class MultiStageCreateRoomPopup_SetSongInit_Patch
+        {
+            private static void Prefix(ref string songId, out string __state)
+            {
+                __state = null;
+                OfflineStubPatches.EnsureOfflineDlcEntries("CreateRoomPopup.SetSongInit"); // 진짜 원인: 오프라인에서 DLCEntrys가 null → 원본이 NRE
+                try
+                {
+                    if (!ModConfig.CustomEnabled.Value || string.IsNullOrEmpty(TemplateOfficialSongId))
+                        return;
+                    if (CustomPackManager.ResolveBySongId(songId) == null)
+                        return;
+
+                    __state = songId;            // Postfix에서 커스텀 제목·자켓을 되돌려 놓기 위해 원래 ID를 기억
+                    songId = TemplateOfficialSongId;
+                }
+                catch (Exception ex)
+                {
+                    Mod.Log.Warning($"[CreateRoomPopup] 템플릿 곡 치환 실패: {ex.Message}");
+                }
+            }
+
+            private static void Postfix(MultiStageCreateRoomPopup __instance, string __state)
+            {
+                if (__state == null || __instance == null)
+                    return;
+
+                try
+                {
+                    var pack = CustomPackManager.ResolveBySongId(__state);
+                    if (pack == null)
+                        return;
+
+                    if (__instance._songName != null && !string.IsNullOrEmpty(pack.Title))
+                        __instance._songName.text = pack.Title;
+
+                    if (__instance._eyeCatch != null && !string.IsNullOrEmpty(pack.JacketPath))
+                    {
+                        var sprite = LoadOrGetJacket(pack.JacketPath);
+                        if (sprite != null)
+                        {
+                            __instance._eyeCatch.sprite = sprite;
+                            __instance._eyeCatch.color = Color.white;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Mod.Log.Warning($"[CreateRoomPopup] 커스텀 제목·자켓 복원 실패: {ex.Message}");
+                }
+            }
+        }
+
         // 곡 로딩 화면(BGAPlayerLoader) 배경 이미지도 커스텀 로딩 썸네일(16:9 우선)로 교체
         [HarmonyPatch(typeof(BGAPlayerLoader), nameof(BGAPlayerLoader.SetInfoData))]
         internal static class BGAPlayerLoader_SetInfoData_Patch
