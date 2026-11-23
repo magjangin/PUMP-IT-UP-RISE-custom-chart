@@ -34,7 +34,7 @@
 - 커스텀 곡 ID는 `990001`부터 경로 사전순으로 부여한다(README 구버전의 `HWA_0001` 표기는 오기). 폴더를 추가·삭제하면 뒤쪽 곡 ID가 밀린다
 
 ## 4. 핵심 훅 시그니처와 주입 파이프라인
-- 주입: version.dll(MelonLoader) → Mods\PIURiseCustom.dll → `OnInitializeMelon`에서 `SafePatcher.ApplyAll(HarmonyInstance)` (v0.3.2 기준 **63개 패치 클래스**(수작업 집계). 실기 부팅 확인은 진단 훅이 붙은 79/79 빌드(2026-11-23)까지)
+- 주입: version.dll(MelonLoader) → Mods\PIURiseCustom.dll → `OnInitializeMelon`에서 `SafePatcher.ApplyAll(HarmonyInstance)` (v0.3.2 기준 **63개 패치 클래스**. 실기 부팅 63/63 적용 확인, 2026-11-23 17:13)
 - interop 네임스페이스: 전역 타입 `Il2Cpp.MainStage`, 네임스페이스 타입 `Il2CppPIUMobileStepDLL.PUMPPlayer` (확인)
 - 커스텀 곡 파이프라인 요약 (전체 표는 docs/hooks.md §4):
   1. `Mk2SongLoader.CacheSongTable/CacheArcadeSongTable` Prefix → `PIUDataBase.songTable`에 `Song` 주입
@@ -101,7 +101,8 @@ dotnet build "H:\source\repos\PUMP IT UP RISE-unity-il2cpp\mod\PIURiseSkeleton\P
 - **확인 (2026-11-23 실기, v0.3.2)**: 부팅 `Patches=62~79 (실패 0)`(빌드별), 오프라인 타이틀 → 선곡 → `.bms` 1판(Split=4, 1216행) → 결과 화면까지 정상, `MaxScore=2000000` 결과 화면 SCORE 2000000 표시. 빌드 경고 0 / 오류 0
 - **Perfect 수 744(v0.3.0, Split=16) → 417(v0.3.2, Split=4)는 노트 누락이 아니다 (2026-11-23 오프라인 검증)**: `hwa2.bms` 오브젝트 358개 = 탭 328 + 홀드 15쌍(시작/끝 30). 전부 Split=4 격자에 정확히 맞고(격자 밖 0) 같은 (레인,행) 중복도 0이라 탭 328 + 홀드 헤드 15 = 343개는 두 버전 모두 보존된다. 차이는 **홀드 몸통 판정**에서 온다(417−343=74 vs 744−343=401). 홀드는 총 39.25박이고 행 수가 Split에 비례해(157행 vs 628행) 홀드 틱 판정도 Split에 따라 달라지지만, 틱 수가 행 수에 정확히 비례하지는 않는다(74/157 vs 401/628)→ 게임의 홀드 틱 공식은 **미확인**. 홀드가 있는 차트는 Split 선택(`ChooseBeatSplit`)에 따라 최대 콤보·판정 총수가 달라진다는 점만 알고 있을 것
 - **확인 (2026-11-23 17:10 실기, v0.3.2 멀티 메뉴)**: F2 멀티 메뉴 → F3 방 생성 창 → ESC(`DoCancel`)로 닫힘, 다시 F3 → ENTER(`DoConfirm` → `NetworkManager.CreateRoom(990001, 5)`) 크래시 없음 → 이후 ESC 정상. 접속은 `127.0.0.1:1`로 즉시 실패해 외부 통신 없음. 방은 실제로 만들어지지 않는다(서버 없음). 곡 제목·자켓이 창에 커스텀으로 뜨는지는 스크린샷으로 확인하지 못했다
-- **미확인 (v0.3.2 변경분)**: ① 방 목록의 빠른입장(F2)·방 입장(ENTER)·방 목록 새로고침 등 방 생성 외 멀티 조작(같은 `DLCEntrys`/접속 실패 경로를 타므로 NRE 가능성 있음), ② `[OfflineStub] 응답 형식 미확인 명령` 경고가 실제로 어떤 명령에서 뜨는지(실기 로그에는 한 번도 없음), ③ 노트 풀링 방어(Sway/Chaos 켠 상태), ④ 인게임 HUD 점수 표시 여부, ⑤ 최종 63개 빌드의 실기 부팅 수(`Patches=63`) — 검증은 진단 훅 16개가 붙은 79개 빌드에서 했고 최종본은 그 로그 전용 훅만 뺀 것
+- **확인 (2026-11-23 17:13 실기, v0.3.2 최종 63개 빌드)**: 부팅 `Patches=63 (실패 0)`, `PlayerData.DLCEntrys` 보강 로그, 멀티 메뉴 진입(`InitMultiCon` 로컬 대체) 후 **방 입장·빠른입장도 크래시 없이 의도대로 막힘**(사용자 확인; 방은 만들어지거나 입장되지 않는다), 새 크래시 이벤트 없음
+- **미확인 (v0.3.2 변경분)**: ① `[OfflineStub] 응답 형식 미확인 명령` 경고가 실제로 어떤 명령에서 뜨는지(실기 로그에는 한 번도 없음), ② 노트 풀링 방어(Sway/Chaos 켠 상태), ③ 인게임 HUD 점수 표시 여부, ④ 방 생성 창에 커스텀 곡 제목·자켓이 제대로 뜨는지(스크린샷 미확인), ⑤ 방 목록 새로고침 등 멀티 메뉴의 나머지 조작
 - **잠재 위험 (코드 감사, v0.3.2에서 방어 추가했으나 실측 전)**:
   - 노트 풀링: `Parent`/`Split` 검증으로 재사용을 감지해 기준 위치를 다시 잡는다. 단 게임이 재사용 시 `localPosition.x`를 초기화하지 않으면 재캡처 값에 이전 흔들림이 섞일 수 있다
   - `MaxScore`: 결과 화면 외의 점수 표시(인게임 HUD 등)가 있으면 여전히 1,000,000 기준으로 보일 수 있다. 로그의 `[미처리 경로]` 줄이나 화면을 보고 해당 경로에 훅을 추가할 것
