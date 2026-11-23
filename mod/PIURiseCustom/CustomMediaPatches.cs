@@ -10,8 +10,33 @@ namespace PIURiseCustom
 {
     internal static class CustomMediaPatches
     {
-        // PlayBase.LoadStep에서 HWA_ 커스텀 곡을 템플릿 ID로 우회 통과시킬 때 실제 팩을 전달하는 슬롯
+        // PlayBase.LoadStep에서 커스텀 곡(990001…)을 템플릿 ID로 우회 통과시킬 때 실제 팩을 Step.Load Postfix로 전달하는 슬롯
         private static CustomPack _pendingCustomPack;
+
+        // ===== VideoPlayer 이벤트 핸들러 정리 =====
+        // add_prepareCompleted/add_errorReceived로 붙인 핸들러는 떼지 않으면 같은 VideoPlayer에 계속 쌓인다.
+        // 선곡 화면에서 커스텀 곡 사이를 오갈 때마다 하나씩 늘어나 Prepare 완료 때마다 지난 핸들러가 전부 호출됐다(v0.3.4에서 직전 것을 뗌).
+        private sealed class VideoHandlers
+        {
+            public VideoPlayer Player;
+            public VideoPlayer.EventHandler Prepared;
+            public VideoPlayer.ErrorEventHandler Error;
+
+            public void Detach()
+            {
+                var vp = Player;
+                if (vp is not null)
+                {
+                    if (Prepared is not null) { try { vp.remove_prepareCompleted(Prepared); } catch { } }
+                    if (Error is not null) { try { vp.remove_errorReceived(Error); } catch { } }
+                }
+                Player = null;
+                Prepared = null;
+                Error = null;
+            }
+        }
+        private static readonly VideoHandlers _previewHandlers = new();
+        private static readonly VideoHandlers _bgaHandlers = new();
 
         private static string GetCurrentSongId() => Util.CurrentSongId();
 
@@ -76,7 +101,7 @@ namespace PIURiseCustom
             catch { return 0; }
         }
 
-        // 0. PlayBase.LoadStep(songId, lv, playType): HWA 독립 곡의 팩을 Step.Load(byte[])에 전달한다.
+        // 0. PlayBase.LoadStep(songId, lv, playType): 커스텀 독립 곡의 팩을 Step.Load(byte[])에 전달한다.
         [HarmonyPatch(typeof(PlayBase), nameof(PlayBase.LoadStep))]
         internal static class PlayBase_LoadStep_Patch
         {
@@ -251,22 +276,28 @@ namespace PIURiseCustom
                     Mod.Log.Msg($"[CustomBGA] '{pack.Title}' 직접 스트리밍 주입 (영상 음소거): {fileUrl}");
 
                     bool handled = false;
-                    vp.add_errorReceived(Il2CppInterop.Runtime.DelegateSupport.ConvertDelegate<VideoPlayer.ErrorEventHandler>(
+                    _bgaHandlers.Detach();
+                    var onError = Il2CppInterop.Runtime.DelegateSupport.ConvertDelegate<VideoPlayer.ErrorEventHandler>(
                         new Action<VideoPlayer, string>((s, msg) =>
                         {
                             if (handled) return;
                             handled = true;
                             Mod.Log.Warning($"[CustomBGA] VideoPlayer 오류: {msg}");
                             __instance.OnVideoError(s, msg);
-                        })));
-                    vp.add_prepareCompleted(Il2CppInterop.Runtime.DelegateSupport.ConvertDelegate<VideoPlayer.EventHandler>(
+                        }));
+                    var onPrepared = Il2CppInterop.Runtime.DelegateSupport.ConvertDelegate<VideoPlayer.EventHandler>(
                         new Action<VideoPlayer>(s =>
                         {
                             if (handled) return;
                             handled = true;
                             Mod.Log.Msg("[CustomBGA] VideoPlayer 준비 완료");
                             __instance.OnBGAPrepared(s);
-                        })));
+                        }));
+                    vp.add_errorReceived(onError);
+                    vp.add_prepareCompleted(onPrepared);
+                    _bgaHandlers.Player = vp;
+                    _bgaHandlers.Error = onError;
+                    _bgaHandlers.Prepared = onPrepared;
                     vp.Prepare();
                     return false;
                 }
@@ -342,14 +373,18 @@ namespace PIURiseCustom
                     __instance._isVideoLoaded = false;
 
                     bool handled = false;
-                    vp.add_prepareCompleted(Il2CppInterop.Runtime.DelegateSupport.ConvertDelegate<VideoPlayer.EventHandler>(
+                    _previewHandlers.Detach();
+                    var onPrepared = Il2CppInterop.Runtime.DelegateSupport.ConvertDelegate<VideoPlayer.EventHandler>(
                         new Action<VideoPlayer>(s =>
                         {
                             if (handled) return;
                             handled = true;
                             __instance._isVideoLoaded = true;
                             try { s.Play(); } catch { }
-                        })));
+                        }));
+                    vp.add_prepareCompleted(onPrepared);
+                    _previewHandlers.Player = vp;
+                    _previewHandlers.Prepared = onPrepared;
 
                     vp.Prepare();
                     Mod.Log.Msg($"[PreviewBGA] '{pack.Title}' 선곡 프리뷰 BGA 주입: {Path.GetFileName(pack.BgaPath)}");

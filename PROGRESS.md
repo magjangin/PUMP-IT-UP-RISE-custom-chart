@@ -34,8 +34,10 @@
 - [수정·빌드만] 11b. MaxScore 재설계 (2026-11-23) — GameplayOptionPatches.cs — 실기에서 `MaxScore=2000000`이 적용되지 않는 것을 발견. 원인: 쓰던 `CalcNewBestScore` 계열은 점수 계산이 아니라 신기록 비교(REA 의사코드로 확인). `GetScoreAndAccuracy` 1차 시도는 실기에서 호출되지 않아 실패 → 로그로 확인된 실제 경로 `NumberRoller.RollCombo(Score, int)` Prefix로 재교체(패치 수 62 유지, 로그 전용 훅 2개). **실기 확인 완료 (16:39)**: 결과 화면 SCORE 2000000, 로그 `1000000 → 2000000`
 
 - [수정·빌드] 12. v0.3.3 핫패스 정리 (2026-11-23) — NoteVisualPatches.cs(LateUpdate 훅 2개를 속성 기반 → 기능이 켜졌을 때만 `MainStage.Start`에서 동적 부착, 노트당 `Mathf.*`/`Time.time`/`Camera.main`/`Screen.height` IL2CPP 호출을 `MathF`·프레임 캐시로 대체), Mod.cs(`FrameIndex`, `PatchHarmony`, 0.3.3), OfflineStubPatches.cs(`Send` 차단 로그 명령별 1회), CHANGELOG.md 신설. 실기 미확인: 비주얼 기능 켬/끔 전환 시 훅 부착·해제
+- [수정·빌드] 13. v0.3.4 전체 감사 (2026-11-23) — 전 파일 — 버그: 마라톤 전환 플래그 고착(공식 곡 결과창 ESC 막힘), 프리뷰/인게임 BGA `VideoPlayer` 핸들러 누적. 내성: 오프라인 패치 실패 오류 승격·기능 그룹 집계(SafePatcher), `Mod.OnUpdate` 서브시스템 격리, GAMESTART·IngameSongInfoUI.OnShow Prefix 격리, 노트 비주얼 훅 반쯤 붙음 롤백, 스켈레톤 `CheckGameReferences`. 성능: 판정바 틱 활성 상태 관리 쪽 기억, 모양 스프라이트 `SetPixels32` 일괄 생성, 오버레이·마라톤 꺼짐 시 조기 반환. 문서: hooks.md 플레이 옵션 행의 제거된 훅(`CalcNewBestScore`·`ScoreRoller.InitData`) 정정, 방 생성 창 주석의 원인 오기 정정. 빌드 경고 0/오류 0, 실기 미확인
 
 ## 다음 세션 할 일
+4c. v0.3.4 실기: 판정바 모양 1/2, 선곡 프리뷰 영상 여러 번 오가기, 마라톤 곡 도중 이탈 → 공식 곡 결과창 ESC (AGENTS.md §7)
 0. v0.3.2 남은 실기: 인게임 HUD 점수 유무, 방 생성 창의 커스텀 곡 제목·자켓 표시, 멀티 방 목록 새로고침 등 나머지 조작. (`Patches=63`·멀티 메뉴 진입·방 생성/입장/빠른입장 차단·MaxScore는 확인 완료)
 0b. ~~Perfect 수 744→417 차이 조사~~ **완료 (2026-11-23)**: 노트 누락 아님(탭 328+홀드 헤드 15=343 보존, 격자 밖·중복 0). 차이는 홀드 몸통 틱 판정이 Split에 따라 달라지기 때문. 홀드 틱의 정확한 공식은 미확인(AGENTS.md §7)
 1. v0.3.2로 커스텀 곡 1판(선곡 → 플레이 → 결과) 재실기 (v0.3.1 로그는 선곡·프리뷰까지만 있고 플레이 기록 없음) — BMS Split=4 판정·스크롤, 프리뷰→본게임 오디오 캐시, 키뷰어 확인

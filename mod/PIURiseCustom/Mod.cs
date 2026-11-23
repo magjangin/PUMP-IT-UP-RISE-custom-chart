@@ -12,7 +12,7 @@ namespace PIURiseCustom
 {
     public class Mod : MelonMod
     {
-        public const string Version = "0.3.3";
+        public const string Version = "0.3.4";
 
         internal static MelonLogger.Instance Log;
         internal static HarmonyLib.Harmony PatchHarmony;
@@ -44,8 +44,21 @@ namespace PIURiseCustom
         public override void OnUpdate()
         {
             FrameIndex++;
-            InGameOverlayUI.UpdateOverlay();
-            CustomMarathonPatches.OnUpdate();
+            // 매 프레임 경로: 예외가 새면 MelonLoader가 프레임마다 스택을 찍어 로그가 폭주한다(게임 업데이트로 필드·입력 API가 바뀐 경우 등).
+            // 서브시스템별로 격리해 첫 예외만 남기고 나머지 기능은 계속 돈다(v0.3.4).
+            try { InGameOverlayUI.UpdateOverlay(); }
+            catch (System.Exception ex) { WarnOnce(ref _overlayTickFailed, "OverlayUI", ex); }
+            try { CustomMarathonPatches.OnUpdate(); }
+            catch (System.Exception ex) { WarnOnce(ref _marathonTickFailed, "Marathon", ex); }
+        }
+
+        private static bool _overlayTickFailed, _marathonTickFailed;
+
+        private static void WarnOnce(ref bool flag, string tag, System.Exception ex)
+        {
+            if (flag) return;
+            flag = true;
+            Log?.Warning($"[{tag}] 매 프레임 갱신 중 예외(이후 같은 예외는 기록 생략): {ex.GetType().Name}: {ex.Message}");
         }
 
         internal static void ResetCounts()

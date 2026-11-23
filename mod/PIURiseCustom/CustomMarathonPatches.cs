@@ -29,6 +29,10 @@ namespace PIURiseCustom
 
         public static void OnCustomSongStarted(string songId)
         {
+            // 곡이 실제로 시작됐으면 직전 결과창의 "다음 곡 전환 중" 상태는 끝난 것이다.
+            // 예전엔 OnShow에서만 풀어서, 마라톤 곡을 도중에 나가고 공식 곡을 치면 결과창 ESC(DoEscape)가 계속 막혔다(v0.3.4).
+            _transitionTriggered = false;
+
             if (!SaveCustomConfig.CustomMarathon || string.IsNullOrEmpty(songId))
                 return;
 
@@ -68,7 +72,9 @@ namespace PIURiseCustom
         {
             if (!SaveCustomConfig.CustomMarathon || _activeResultUI == null || _transitionTriggered)
             {
-                DestroyBanner();
+                // 배너를 만든 적 없으면 매 프레임 Unity null 비교(IL2CPP 호출)도 하지 않는다
+                if (_bannerCanvasObj is not null)
+                    DestroyBanner();
                 return;
             }
 
@@ -195,7 +201,7 @@ namespace PIURiseCustom
                     string timerStr = "";
                     if (SaveCustomConfig.CustomMarathonAutoNext > 0f && _resultShownTime > 0f)
                     {
-                        float rem = Mathf.Max(0f, SaveCustomConfig.CustomMarathonAutoNext - (Time.unscaledTime - _resultShownTime));
+                        float rem = MathF.Max(0f, SaveCustomConfig.CustomMarathonAutoNext - (Time.unscaledTime - _resultShownTime));
                         timerStr = $" ({rem:0.0}s)";
                     }
 
@@ -222,6 +228,7 @@ namespace PIURiseCustom
             private static void Postfix(ResultUI __instance)
             {
                 InGameOverlayUI.IsInStage = false;
+                _transitionTriggered = false; // 새 결과창이 떴으면 이전 전환은 끝났다(공식 곡 결과창에서도 ESC가 막히지 않게)
                 if (!SaveCustomConfig.CustomMarathon)
                     return;
 
@@ -230,7 +237,6 @@ namespace PIURiseCustom
 
                 _activeResultUI = __instance;
                 _resultShownTime = Time.unscaledTime;
-                _transitionTriggered = false;
             }
         }
 

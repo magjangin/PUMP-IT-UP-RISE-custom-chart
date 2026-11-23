@@ -29,3 +29,6 @@ Thumbs.db
 *.log
 *.jsonl
 *.tmp
+
+# 릴리즈 zip (GitHub Release에 올리는 산출물)
+dist/
