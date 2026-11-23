@@ -8,7 +8,9 @@ namespace PIURiseCustom
 {
     internal sealed class CustomPack
     {
-        public string SongId;        // 선곡 목록 주입용 고유 ID (예: "HWA_0001")
+        // 선곡 목록 주입용 ID: "990001"부터 스캔 순서(경로 사전순)대로 부여.
+        // 폴더를 추가/삭제하면 뒤쪽 곡 ID가 밀린다 — 게임 즐겨찾기 등 ID 기반 로컬 데이터가 다른 곡을 가리킬 수 있음.
+        public string SongId;
         public string FolderPath;
         public string FolderName;
         public string AlbumName;     // 2단 깊이일 때 상위 앨범 폴더명 (없으면 null)
@@ -58,7 +60,6 @@ namespace PIURiseCustom
         private static readonly Dictionary<string, CustomPack> _byFolderKey = new(StringComparer.OrdinalIgnoreCase);
 
         public static IReadOnlyList<CustomPack> CatalogSongs => _catalogSongs;
-        public static int PackCount => _byFolderKey.Count;
 
         public static void EnsureSampleFoldersAndScan()
         {
@@ -89,38 +90,52 @@ namespace PIURiseCustom
                 return;
 
             int nextId = 1;
+            int failed = 0;
+
+            // 폴더 하나가 깨져 있어도(권한·잠금·이상한 파일) 나머지 곡은 계속 등록한다.
+            // 여기서 예외가 새면 OnInitializeMelon이 실패해 모드 전체가 꺼진다.
+            void TryAdd(string dir, string folderName, string albumName, string[] files, bool catalogUnlessOverride)
+            {
+                try
+                {
+                    var pack = BuildPack(dir, folderName, albumName, files, ref nextId);
+                    RegisterPack(pack, isCatalogSong: !catalogUnlessOverride || !pack.IsOverrideSlot);
+                }
+                catch (Exception ex)
+                {
+                    failed++;
+                    Mod.Log?.Warning($"[hwa] 곡 폴더 건너뜀 ({dir}): {ex.Message}");
+                }
+            }
 
             // 1) hwa/ 루트에 직접 곡 파일이 배치된 경우 (구방식)
-            if (IsSongFolder(root))
-            {
-                var rootPack = BuildPack(root, "hwa", null, ref nextId);
-                RegisterPack(rootPack, isCatalogSong: true);
-            }
+            var rootFiles = GetFilesSorted(root);
+            if (IsSongFolder(rootFiles))
+                TryAdd(root, "hwa", null, rootFiles, catalogUnlessOverride: false);
 
             // 2) 1단계 하위 폴더 스캔 (곡 폴더 또는 앨범 폴더 자동 판별)
-            foreach (string dir in Directory.GetDirectories(root).OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
+            foreach (string dir in GetDirectoriesSorted(root))
             {
                 string dirName = Path.GetFileName(dir);
+                var files = GetFilesSorted(dir);
 
-                if (IsSongFolder(dir))
+                if (IsSongFolder(files))
                 {
-                    var pack = BuildPack(dir, dirName, null, ref nextId);
-                    RegisterPack(pack, isCatalogSong: !pack.IsOverrideSlot);
+                    TryAdd(dir, dirName, null, files, catalogUnlessOverride: true);
+                    continue;
                 }
-                else
-                {
-                    // 하위 폴더에 곡이 있으면 앨범 폴더로 간주
-                    foreach (string subDir in Directory.GetDirectories(dir).OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
-                    {
-                        if (!IsSongFolder(subDir))
-                            continue;
 
-                        string subName = Path.GetFileName(subDir);
-                        var pack = BuildPack(subDir, subName, dirName, ref nextId);
-                        RegisterPack(pack, isCatalogSong: true);
-                    }
+                // 하위 폴더에 곡이 있으면 앨범 폴더로 간주
+                foreach (string subDir in GetDirectoriesSorted(dir))
+                {
+                    var subFiles = GetFilesSorted(subDir);
+                    if (IsSongFolder(subFiles))
+                        TryAdd(subDir, Path.GetFileName(subDir), dirName, subFiles, catalogUnlessOverride: false);
                 }
             }
+
+            if (failed > 0)
+                Mod.Log?.Warning($"[hwa] 읽기 실패로 건너뛴 곡 폴더 {failed}개");
 
             Mod.Log?.Msg($"[hwa] 스캔 완료: {root} — 목록 주입 곡 {_catalogSongs.Count}개, 전체 등록 팩 {_byFolderKey.Count}개");
         }
@@ -149,12 +164,38 @@ namespace PIURiseCustom
         /// DEFLATE/STARGAZER 규격: 차트(.ucs/.bms/.bme/.bml), info.txt(readme 제외 .txt), .png/.jpg, .mp4/.webm,
         /// 또는 지정 이름의 음원(.ogg/.mp3)이 직접 존재할 때만 곡 폴더로 인정 (.wav 키음 폴더 제외).
         /// </summary>
-        private static bool IsSongFolder(string dir)
+        private static string[] GetFilesSorted(string dir)
         {
-            string[] files;
-            try { files = Directory.GetFiles(dir); }
-            catch { return false; }
+            try
+            {
+                var files = Directory.GetFiles(dir);
+                Array.Sort(files, StringComparer.OrdinalIgnoreCase);
+                return files;
+            }
+            catch (Exception ex)
+            {
+                Mod.Log?.Warning($"[hwa] 파일 목록 읽기 실패 ({dir}): {ex.Message}");
+                return Array.Empty<string>();
+            }
+        }
 
+        private static string[] GetDirectoriesSorted(string dir)
+        {
+            try
+            {
+                var dirs = Directory.GetDirectories(dir);
+                Array.Sort(dirs, StringComparer.OrdinalIgnoreCase);
+                return dirs;
+            }
+            catch (Exception ex)
+            {
+                Mod.Log?.Warning($"[hwa] 하위 폴더 목록 읽기 실패 ({dir}): {ex.Message}");
+                return Array.Empty<string>();
+            }
+        }
+
+        private static bool IsSongFolder(string[] files)
+        {
             foreach (string f in files)
             {
                 string name = Path.GetFileName(f);
@@ -168,12 +209,9 @@ namespace PIURiseCustom
             return false;
         }
 
-        private static CustomPack BuildPack(string dir, string folderName, string albumName, ref int nextId)
+        // 디렉터리 목록은 Scan에서 한 번만 읽어 넘긴다 (예전엔 IsSongFolder/BuildPack이 폴더마다 두 번 읽었음)
+        private static CustomPack BuildPack(string dir, string folderName, string albumName, string[] files, ref int nextId)
         {
-            var files = Directory.GetFiles(dir)
-                .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-
             string chartPath = FindFirstByExt(files, ChartExts);
             string bgmPath = FindBgm(files);
             string previewPath = FindPreviewBgm(files);
@@ -385,7 +423,7 @@ namespace PIURiseCustom
             {
                 string ext = Path.GetExtension(chartPath)?.ToLowerInvariant();
                 int lineCount = 0;
-                foreach (string raw in File.ReadLines(chartPath, Encoding.UTF8))
+                foreach (string raw in Util.ReadAllLinesSmart(chartPath))
                 {
                     if (++lineCount > 200) break;
                     string line = raw.Trim();
@@ -437,7 +475,7 @@ namespace PIURiseCustom
                 if (new FileInfo(infoPath).Length > 16 * 1024 * 1024)
                     return;
 
-                foreach (string raw in File.ReadAllLines(infoPath, Encoding.UTF8))
+                foreach (string raw in Util.ReadAllLinesSmart(infoPath))
                 {
                     string line = raw.Trim();
                     if (string.IsNullOrEmpty(line) || line.StartsWith("#")) continue;

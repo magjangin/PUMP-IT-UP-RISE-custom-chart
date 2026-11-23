@@ -33,63 +33,6 @@ namespace PIURiseCustom
             throw new NotSupportedException($"지원하지 않는 차트 확장자: {ext}");
         }
 
-        /// <summary>
-        /// OGG Vorbis / WAV 파일의 실제 재생 길이(초)를 빠르게 읽는다 (PERFECT GAME 조기 표시 방지용).
-        /// </summary>
-        public static float TryGetAudioDurationSeconds(string audioPath)
-        {
-            if (string.IsNullOrEmpty(audioPath) || !File.Exists(audioPath))
-                return 0f;
-
-            try
-            {
-                string ext = Path.GetExtension(audioPath)?.ToLowerInvariant();
-                using var fs = File.OpenRead(audioPath);
-
-                if (ext == ".ogg")
-                {
-                    // 앞부분에서 \x01vorbis 헤더의 샘플레이트 읽기
-                    int headLen = (int)Math.Min(fs.Length, 4096);
-                    byte[] head = new byte[headLen];
-                    fs.Read(head, 0, headLen);
-                    int sampleRate = 0;
-                    for (int i = 0; i <= headLen - 16; i++)
-                    {
-                        if (head[i] == 0x01 && head[i + 1] == 'v' && head[i + 2] == 'o' &&
-                            head[i + 3] == 'r' && head[i + 4] == 'b' && head[i + 5] == 'i' && head[i + 6] == 's')
-                        {
-                            sampleRate = BitConverter.ToInt32(head, i + 12);
-                            break;
-                        }
-                    }
-                    if (sampleRate <= 0) return 0f;
-
-                    // 끝부분 64KB에서 마지막 OggS 페이지의 granule position 읽기
-                    int tailLen = (int)Math.Min(fs.Length, 65536);
-                    fs.Position = fs.Length - tailLen;
-                    byte[] tail = new byte[tailLen];
-                    fs.Read(tail, 0, tailLen);
-                    long lastGranule = -1;
-                    for (int i = tailLen - 14; i >= 0; i--)
-                    {
-                        if (tail[i] == 'O' && tail[i + 1] == 'g' && tail[i + 2] == 'g' && tail[i + 3] == 'S')
-                        {
-                            long g = BitConverter.ToInt64(tail, i + 6);
-                            if (g > 0)
-                            {
-                                lastGranule = g;
-                                break;
-                            }
-                        }
-                    }
-                    if (lastGranule > 0)
-                        return (float)((double)lastGranule / sampleRate);
-                }
-            }
-            catch { }
-            return 0f;
-        }
-
         private static void PadBlocksToMinDuration(int laneCount, List<UcsBlockData> blocks, float minDurationSeconds)
         {
             if (minDurationSeconds <= 1f || blocks == null || blocks.Count == 0)
@@ -156,7 +99,7 @@ namespace PIURiseCustom
         /// </summary>
         public static Step_t ParseUcs(string path, float extraOffsetMs, float minDurationSeconds = 0f)
         {
-            string[] lines = File.ReadAllLines(path, Encoding.UTF8);
+            string[] lines = Util.ReadAllLinesSmart(path);
             int laneCount = 5;
             var blocks = new List<UcsBlockData>();
             UcsBlockData cur = null;
@@ -239,8 +182,8 @@ namespace PIURiseCustom
         /// </summary>
         public static Step_t ParseBms(string path, float extraOffsetMs, float minDurationSeconds = 0f)
         {
-            // Shift-JIS / UTF-8 / EUC-KR 호환을 위해 기본 UTF8로 읽고 실패 시 Default
-            string[] lines = File.ReadAllLines(path, Encoding.UTF8);
+            // UTF-8 → CP949(EUC-KR) → Shift-JIS 자동 판별 (데이터 라인은 ASCII라 인코딩과 무관, 헤더 문자열만 영향)
+            string[] lines = Util.ReadAllLinesSmart(path);
 
             double baseBpm = 120.0;
             var extBpm = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
@@ -375,8 +318,10 @@ namespace PIURiseCustom
                 measureStartBeat[m + 1] = measureStartBeat[m] + 4.0 * len;
             }
 
-            // 1박당 분할 수(split) = 16 (64분음표 해상도)
-            const int split = 16;
+            // 1박당 분할 수(split): 노트·변속 위치를 정확히 표현하는 가장 작은 값을 고른다.
+            // 예전엔 16 고정이라 (1) 셋잇단(12·24분 등)이 반올림으로 어긋나고 (2) 8비트 위주 차트도 행이 2배로 늘어
+            // 행×레인마다 Il2Cpp Note 객체를 만드는 BuildStepFromBlocks가 불필요하게 무거웠다.
+            int split = ChooseBeatSplit(rawNotes, bpmChanges, measureStartBeat);
             double totalBeats = measureStartBeat[maxMeasure + 1];
             int totalRows = (int)Math.Ceiling(totalBeats * split) + split * 4;
 
@@ -478,8 +423,44 @@ namespace PIURiseCustom
             }
 
             PadBlocksToMinDuration(laneCount, blocks, minDurationSeconds);
-            Mod.Log?.Msg($"[BMS Parser] '{Path.GetFileName(path)}' -> {laneCount}키, BPM={baseBpm}, 블록 {blocks.Count}개, 총 {totalRows}행 변환 완료");
+            Mod.Log?.Msg($"[BMS Parser] '{Path.GetFileName(path)}' -> {laneCount}키, BPM={baseBpm}, Split={split}, 블록 {blocks.Count}개, 총 {totalRows}행 변환 완료");
             return BuildStepFromBlocks(laneCount, blocks);
+        }
+
+        // 1박당 분할 후보 (4분 기준 4=16분, 12=셋잇단 16분, 48=192분 해상도 …). nBeatSplit은 byte, UCS Split 상한 128.
+        private static readonly int[] SplitCandidates = { 4, 8, 12, 16, 24, 32, 48, 64, 96 };
+        private const int FallbackSplit = 48;
+
+        private static int ChooseBeatSplit(
+            List<(int measure, int lane, double frac, string id)> notes,
+            List<(int measure, double frac, double bpm)> bpmChanges,
+            double[] measureStartBeat)
+        {
+            double BeatOf(int measure, double frac) =>
+                measureStartBeat[measure] + frac * (measureStartBeat[measure + 1] - measureStartBeat[measure]);
+
+            var beats = new List<double>(notes.Count + bpmChanges.Count);
+            foreach (var n in notes) beats.Add(BeatOf(n.measure, n.frac));
+            foreach (var b in bpmChanges) beats.Add(BeatOf(b.measure, b.frac));
+
+            foreach (int s in SplitCandidates)
+            {
+                bool exact = true;
+                foreach (double beat in beats)
+                {
+                    double v = beat * s;
+                    if (Math.Abs(v - Math.Round(v)) > 1e-4)
+                    {
+                        exact = false;
+                        break;
+                    }
+                }
+                if (exact)
+                    return s;
+            }
+
+            Mod.Log?.Msg($"[BMS Parser] 정확히 맞는 분할이 없어 Split={FallbackSplit}로 반올림 배치 (5·7연음 등)");
+            return FallbackSplit;
         }
 
         private static int MapBmsChannelToPiuLane(string ch)

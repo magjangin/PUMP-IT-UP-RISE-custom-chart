@@ -12,12 +12,11 @@ namespace PIURiseCustom
     /// SaveCustomKey/config.txt 기반 플레이 옵션 패치:
     /// - AutoPlay, AllPerfect, BlockSave, MaxScore
     /// - 실시간 판정바용 판정 오차(ms) 수집
-    /// - 실시간 키뷰어용 KeyInput 인스턴스 추적
+    /// (키뷰어는 InGameOverlayUI가 GameInputManager를 직접 읽는다. 예전 KeyInput 추적 훅은 미사용이라 제거)
     /// </summary>
     internal static class GameplayOptionPatches
     {
         internal static PlayBase ActivePlayBase;
-        internal static KeyInput ActiveKeyInput;
 
         // 1. AllPerfect: 실제로 노트를 쳐서 Great(1)/Good(2)/Bad(3) 판정이 났을 때만 PERFECT(0)로 승격
         //    (노트가 없는 빈 입력 grade=-1 / note==null 을 건드리면 빈 버튼만 눌러도 PERFECT 콤보가 올라가는 버그 방지)
@@ -68,11 +67,6 @@ namespace PIURiseCustom
             private static void Prefix(PlayBase __instance)
             {
                 ActivePlayBase = __instance;
-                try
-                {
-                    ActiveKeyInput = UnityEngine.Object.FindObjectOfType<KeyInput>();
-                }
-                catch { }
 
                 if (!SaveCustomConfig.AutoPlay || __instance == null || __instance._player == null)
                     return;
@@ -166,15 +160,6 @@ namespace PIURiseCustom
                     }
                 }
                 catch { }
-            }
-        }
-
-        [HarmonyPatch(typeof(KeyInput), "Awake")]
-        internal static class KeyInput_Awake_Patch
-        {
-            private static void Postfix(KeyInput __instance)
-            {
-                ActiveKeyInput = __instance;
             }
         }
 

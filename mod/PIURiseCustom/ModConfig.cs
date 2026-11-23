@@ -4,6 +4,11 @@ using MelonLoader.Utils;
 
 namespace PIURiseCustom
 {
+    /// <summary>
+    /// MelonPreferences(UserData/MelonPreferences.cfg) 항목.
+    /// OfflineMode / CustomEnabled / CustomChartOffsetMs는 SaveCustomKey/config.txt가 원본이며,
+    /// config.txt를 읽을 때마다 이 값들을 덮어쓴다(SaveCustomConfig.ReloadIfChanged). cfg에서 바꿔도 config.txt 값이 이긴다.
+    /// </summary>
     internal static class ModConfig
     {
         private static MelonPreferences_Category _cat;
@@ -38,11 +43,11 @@ namespace PIURiseCustom
 
             CustomEnabled = _cat.CreateEntry("CustomEnabled", true,
                 "커스텀 차트/BGM/BGA 주입 활성화",
-                "게임 중 F9 키로도 ON/OFF 토글 및 폴더 재스캔이 가능합니다.");
+                "SaveCustomKey/config.txt의 CustomEnabled 값이 우선합니다. hwa/ 폴더 변경은 게임 재시작 시 반영됩니다.");
 
             CaptureOnlineResponses = _cat.CreateEntry("CaptureOnlineResponses", false,
                 "온라인 응답 JSON 캡처 (OfflineMode=false 일 때만 동작)",
-                "true로 켜고 1회 정상 접속하면 Logs/net_capture.jsonl에 서버 응답 형식을 기록합니다.");
+                "true로 켜고 1회 정상 접속하면 MelonLoader/net_capture.jsonl에 서버 응답 형식을 기록합니다.");
 
             OverridePreviewAudio = _cat.CreateEntry("OverridePreviewAudio", true,
                 "선곡 미리듣기 BGM도 커스텀으로 교체");

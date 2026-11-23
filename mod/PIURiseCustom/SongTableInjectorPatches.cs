@@ -10,7 +10,7 @@ using UnityEngine;
 namespace PIURiseCustom
 {
     /// <summary>
-    /// hwa/ 하위 폴더의 커스텀 곡들을 PIUDataBase.songTable에 독립 곡(HWA_0001...)으로 등록하고,
+    /// hwa/ 하위 폴더의 커스텀 곡들을 PIUDataBase.songTable에 독립 곡(ID 990001...)으로 등록하고,
     /// 선곡 화면 자켓(EyecatchSprite)을 폴더의 cover.png / Thumbnail.png 등으로 교체한다.
     /// </summary>
     internal static class SongTableInjectorPatches
@@ -24,11 +24,8 @@ namespace PIURiseCustom
         internal static int LastCustomSelectedLevel = 10;
 
         private static readonly Dictionary<string, Sprite> _jacketCache = new(StringComparer.OrdinalIgnoreCase);
-
-        public static void ClearJacketCache()
-        {
-            _jacketCache.Clear();
-        }
+        // 디코딩에 실패한 이미지 경로. 선곡 리스트 스크롤마다(UpdateDisplayContent) 깨진 파일을 다시 읽어 프레임이 끊기는 것을 막는다.
+        private static readonly HashSet<string> _jacketFailed = new(StringComparer.OrdinalIgnoreCase);
 
         private static void InjectIntoTable(Il2CppSystem.Collections.Generic.Dictionary<string, Song> table, string tableName)
         {
@@ -157,9 +154,17 @@ namespace PIURiseCustom
         {
             private static void Prefix()
             {
-                var db = PIUDataBase.Instance;
-                if (db != null)
-                    InjectIntoTable(db.songTable, "songTable");
+                // Prefix 예외는 원본 CacheSongTable까지 건너뛰게 만들어 공식 곡 목록이 비므로 반드시 격리
+                try
+                {
+                    var db = PIUDataBase.Instance;
+                    if (db != null)
+                        InjectIntoTable(db.songTable, "songTable");
+                }
+                catch (Exception ex)
+                {
+                    Mod.Log.Error($"[SongInjector] songTable 주입 실패(공식 곡은 정상 유지): {ex}");
+                }
             }
 
             private static void Postfix(Mk2SongLoader __instance)
@@ -184,19 +189,30 @@ namespace PIURiseCustom
         {
             private static void Prefix()
             {
-                var db = PIUDataBase.Instance;
-                if (db != null)
-                    InjectIntoTable(db.acSongTable, "acSongTable");
+                try
+                {
+                    var db = PIUDataBase.Instance;
+                    if (db != null)
+                        InjectIntoTable(db.acSongTable, "acSongTable");
+                }
+                catch (Exception ex)
+                {
+                    Mod.Log.Error($"[SongInjector] acSongTable 주입 실패(공식 곡은 정상 유지): {ex}");
+                }
             }
         }
 
         internal static Sprite LoadOrGetJacket(string jacketPath)
         {
-            if (string.IsNullOrEmpty(jacketPath) || !File.Exists(jacketPath))
+            if (string.IsNullOrEmpty(jacketPath))
                 return null;
 
+            // 캐시를 디스크 확인(File.Exists)보다 먼저 본다 — 이 함수는 리스트 셀 갱신마다 불린다
             if (_jacketCache.TryGetValue(jacketPath, out var cached) && cached != null)
                 return cached;
+
+            if (_jacketFailed.Contains(jacketPath) || !File.Exists(jacketPath))
+                return null;
 
             try
             {
@@ -205,7 +221,8 @@ namespace PIURiseCustom
                 bool ok = ImageConversion.LoadImage(tex, new Il2CppStructArray<byte>(bytes), false);
                 if (!ok)
                 {
-                    Mod.Log.Warning($"[CustomJacket] ImageConversion.LoadImage 실패 ({jacketPath}, {bytes.Length} bytes)");
+                    _jacketFailed.Add(jacketPath);
+                    Mod.Log.Warning($"[CustomJacket] ImageConversion.LoadImage 실패 ({jacketPath}, {bytes.Length} bytes) — 재시작 전까지 다시 시도하지 않음");
                     return null;
                 }
 
@@ -223,6 +240,7 @@ namespace PIURiseCustom
             }
             catch (Exception ex)
             {
+                _jacketFailed.Add(jacketPath);
                 Mod.Log.Warning($"[CustomJacket] 로드 실패 ({jacketPath}): {ex.Message}");
                 return null;
             }
@@ -274,7 +292,7 @@ namespace PIURiseCustom
             if (content == null)
                 return;
 
-            var pack = CustomPackManager.ResolveBySongId(content.Song.ID);
+            var pack = CustomPackManager.ResolveBySongId(Util.SongId(content.Song));
             if (pack == null || string.IsNullOrEmpty(pack.JacketPath))
                 return;
 
@@ -374,9 +392,9 @@ namespace PIURiseCustom
         {
             private static void Prefix()
             {
-                if (!ModConfig.CustomEnabled.Value) return;
+                if (!ModConfig.CustomEnabled.Value || !Util.IsCurrentSongCustom()) return;
                 var pd = PlayerData.Instance;
-                if (pd != null && CustomPackManager.IsCatalogSongId(pd.Song.ID))
+                if (pd != null)
                     pd.SelectedLevel = LastCustomSelectedLevel;
             }
 
@@ -389,7 +407,7 @@ namespace PIURiseCustom
                 if (pd == null)
                     return;
 
-                var pack = CustomPackManager.ResolveBySongId(pd.Song.ID);
+                var pack = CustomPackManager.ResolveBySongId(Util.CurrentSongId());
                 string loadingImg = pack?.LoadingThumbnailPath ?? pack?.JacketPath;
                 if (string.IsNullOrEmpty(loadingImg))
                     return;
@@ -442,9 +460,7 @@ namespace PIURiseCustom
         {
             private static void Prefix(ref int level)
             {
-                if (!ModConfig.CustomEnabled.Value) return;
-                var pd = PlayerData.Instance;
-                if (pd != null && CustomPackManager.IsCatalogSongId(pd.Song.ID))
+                if (ModConfig.CustomEnabled.Value && Util.IsCurrentSongCustom())
                     level = LastCustomSelectedLevel;
             }
         }
@@ -454,9 +470,7 @@ namespace PIURiseCustom
         {
             private static void Prefix(ref int lv)
             {
-                if (!ModConfig.CustomEnabled.Value) return;
-                var pd = PlayerData.Instance;
-                if (pd != null && CustomPackManager.IsCatalogSongId(pd.Song.ID))
+                if (ModConfig.CustomEnabled.Value && Util.IsCurrentSongCustom())
                     lv = LastCustomSelectedLevel;
             }
         }
@@ -536,8 +550,7 @@ namespace PIURiseCustom
                 if (!ModConfig.CustomEnabled.Value || __instance == null)
                     return;
 
-                string songId = __instance.Song.ID;
-                var pack = CustomPackManager.ResolveBySongId(songId);
+                var pack = CustomPackManager.ResolveBySongId(Util.SongId(__instance.Song));
                 if (pack == null || string.IsNullOrEmpty(pack.JacketPath))
                     return;
 
@@ -555,8 +568,7 @@ namespace PIURiseCustom
                 if (!ModConfig.CustomEnabled.Value || __instance == null)
                     return;
 
-                string songId = __instance.Song.ID;
-                var pack = CustomPackManager.ResolveBySongId(songId);
+                var pack = CustomPackManager.ResolveBySongId(Util.SongId(__instance.Song));
                 if (pack == null || string.IsNullOrEmpty(pack.JacketPath))
                     return;
 

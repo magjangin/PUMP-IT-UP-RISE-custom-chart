@@ -42,6 +42,42 @@ JUDGE 열거형: 0 Perfect, 1 Great, 2 Good, 3 Bad, 4 Miss (src_dummy\PIUMobileS
 | `SteamManager.CheckAllDLCStatus()` | 0x7DB090 | 시그니처만 | DLC 소유 확인 |
 | `SteamManager.IsDLCInstalled(uint appID)` | 0x7DBA90 | 시그니처만 | DLC 설치 확인 |
 
+## 4. PIURiseCustom v0.3.1 실제 패치 목록 (61개, 2026-11-23 실기 부팅 61/61 적용)
+
+RVA 대신 **이름**으로 걸린다. 게임 업데이트 후 `[Patch] … 실패` 로그에 나온 클래스 이름을 이 표에서 찾아 영향 기능을 판단한다.
+"관문"은 Prefix가 원본 실행 여부를 좌우하는 지점 — 여기서 실패·예외가 나면 해당 화면 자체가 깨질 수 있다.
+
+| 기능 | 대상 메서드 | 종류 | 실패 시 영향 |
+|---|---|---|---|
+| 곡 주입 | `Mk2SongLoader.CacheSongTable` / `CacheArcadeSongTable` | Prefix(관문, try로 격리)·Postfix | 커스텀 곡이 목록에 안 나옴. 공식 곡은 정상 |
+| CUSTOM 채널 | `Mk2SongLoader.CacheAllChannels`·`IsEmpty`·`GetChannelSongList`, `NewChannelListUI.InitializeListForBoxes`·`StartSelectedChannelAni`, `NewChannelListBox.UpdateChannelSprite` | Prefix/Postfix | CUSTOM 탭 없음 또는 라벨 깨짐. `ALL TUNES`에서 커스텀 곡 선택은 가능 |
+| 잠금 해제 | `MainStation.CheckSongLock` | Prefix | 커스텀 곡이 잠김 표시 |
+| 곡 시작 | `MainStation.GAMESTART` | Prefix+Postfix | **커스텀 곡 시작 불가**(Addressables 검사 실패) |
+| 차트 | `PlayBase.LoadStep`(관문, try), `Step.Load(byte[])` | Prefix / Postfix | 템플릿 공식 곡 차트가 그대로 나옴 |
+| BGM | `AudioManager.LoadMusicSound` | Prefix | 템플릿 곡 음악이 나옴 |
+| BGA | `BGAPlayer.NeedCommonBgaChecker`·`Load`, `GlobalFunc.DoesAssetExists`, `EyeCatchUI.PreparePreviewVideo` | Prefix | 공통/템플릿 BGA, 프리뷰 영상 없음 |
+| 자켓·커튼 | `SongDataCell.Init`, `MSListBox.UpdateDisplayContent`·`UpdateLevels`, `EyeCatchUI.UpdateSong`, `IngameSongInfoUI.OnShow`·`SetNumberImages`·`SetLevelType`·`SetInfoData`, `BGAPlayerLoader.SetInfoData`, `ResultDefaultGameInfo.SetData`, `SongListContent.GetEyecatchSprite`·`GetArcadeEyecatchSprite` | Prefix/Postfix | 기본 이미지·템플릿 난이도 표시 |
+| 오프라인 | `SteamManager.CheckTicket`, `NetworkManager.StartJwtCoroutine`·`SendHeartBeatRoutine`·`SendAuth`·`Send`, `MaintenanceManager.TitleCheck`·`MaintenanceCheck`·`AlramNetworkError`, `CommonUtil.SetPlayLogAtServer` | Prefix(관문) | **부팅 불가 또는 서버 접속 시도** — 업데이트 후 이 중 하나라도 실패하면 `OfflineMode=0`으로 두지 말고 먼저 고칠 것 |
+| 플레이 옵션 | `PUMPPlayer.JudgeNote`·`JudgeLine`·`DrawStep`·`JudgeStep_PostProcess`·`CalcNewBestScore`·`ACCalcNewBestScore`, `PlayBase.StartSong`, `PlayerData.SaveUserPlayResult`, `ScoreRoller.InitData` | Prefix/Postfix | AutoPlay/AllPerfect/BlockSave/MaxScore/판정바 해당 기능만 꺼짐 |
+| 클리어 연출 유예 | `PlayBase.<CoShowNoMiss>d__N.MoveNext` (`TargetMethod`로 이름 검색) | Prefix | PERFECT GAME 연출이 곡 중간에 뜸 |
+| 일시정지 | `MainStage.PauseAllow`(getter), `InGameUI.callMenu` | Postfix / Prefix+Postfix | 부분 채보 후 ESC 불가 |
+| 노트 비주얼 | `SpliteScript.Init`·`LateUpdate`, `LongSpliteScript.LateUpdate` | Postfix | Sway/Chaos/Sudden/Hidden/Fade/CustomNotes 꺼짐 |
+| 마라톤 | `ResultUI.DoEscape`·`OnShow`·`OnHide` | Prefix/Postfix | 마라톤 꺼짐 |
+| 스테이지 수명 | `MainStage.Start`·`SaveResult`·`OnDisable`·`OnDestroy` | Prefix/Postfix | config 핫리로드·오버레이 정리 안 됨 |
+
+## 5. 게임 업데이트 후 점검 절차
+
+1. `appmanifest_2756930.acf`의 `buildid` 확인 → 26399668이 아니면 업데이트된 것
+2. 게임을 MelonLoader로 1회 실행 → `MelonLoader\Il2CppAssemblies\` 재생성 (모드는 일단 그대로 둬도 된다: 실패 패치만 꺼지고 부팅은 계속됨)
+3. `Latest.log`에서 확인:
+   - `[Build] …` 경고 줄 (검증 빌드와 다름)
+   - `[Patch] Harmony 패치 N/61개 적용` — 실패 클래스 이름 목록
+4. 실패 클래스를 §4 표에서 찾아 대상 메서드를 새 덤프(`il2cpp_dump`, ModdingSupportTool `search_reference`)에서 다시 찾는다. 이름이 바뀌었으면 패치 속성만 고치면 된다
+5. `dotnet build … -c Release` — interop 시그니처가 바뀐 메서드는 컴파일 오류로 드러난다 (interop 미생성이면 `CheckGameReferences`가 원인 메시지를 낸다)
+6. 오프라인 관문 6종이 전부 적용될 때까지는 `OfflineMode=1` 유지 + 온라인 접속 금지
+7. 커스텀 곡 1판(선곡 → 플레이 → 결과) 실기 확인 후 `SafePatcher.VerifiedSteamBuildId`/`VerifiedGameVersion`, AGENTS.md §1·§7, 이 문서 제목의 빌드 번호를 갱신
+8. RVA가 필요한 분석(§1~3 표)은 새 GameAssembly.dll 기준으로 다시 뽑아야 한다
+
 ## 주의 (추정 포함)
 
 - `NetworkManager`, `MultiStage`, `GameBeginPacket/GameEndPacket`, `PlayerNetInfo` 등이 있어 **온라인 기록·멀티 기능이 있다.** 점수/판정을 바꾸는 패치는 온라인 기록 오염·계정 제재 위험이 있으므로 스켈레톤은 **읽기 전용 Postfix(로그)** 만 넣었다.

@@ -34,6 +34,12 @@
     <Reference Include="Il2CppFMODUnity"><HintPath>$(MLDir)\Il2CppAssemblies\Il2CppFMODUnity.dll</HintPath><Private>false</Private></Reference>
   </ItemGroup>
 
+  <!-- 게임 업데이트 직후 interop(Il2CppAssemblies)가 아직 재생성되지 않았으면 수십 개의 참조 오류 대신 원인을 바로 알려준다 -->
+  <Target Name="CheckGameReferences" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="!Exists('$(MLDir)\net6\MelonLoader.dll')" Text="MelonLoader가 없습니다: $(MLDir)\net6\MelonLoader.dll — 게임 폴더에 MelonLoader 0.7.3을 설치하거나 -p:GamePath=... 로 경로를 지정하세요." />
+    <Error Condition="!Exists('$(MLDir)\Il2CppAssemblies\Assembly-CSharp.dll')" Text="interop 어셈블리가 없습니다: $(MLDir)\Il2CppAssemblies — 게임을 MelonLoader로 1회 실행해 재생성한 뒤 다시 빌드하세요(게임 업데이트 직후에도 필요)." />
+  </Target>
+
   <Target Name="DeployToMods" AfterTargets="Build" Condition="'$(Deploy)' == 'true'">
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(GamePath)\Mods" />
     <Message Importance="high" Text="Deployed $(TargetFileName) -> $(GamePath)\Mods" />
