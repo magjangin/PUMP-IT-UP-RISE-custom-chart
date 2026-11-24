@@ -8,7 +8,7 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
-    <GamePath Condition="'$(GamePath)' == ''">H:\steam\steamapps\common\PUMP IT UP RISE</GamePath>
+    <GamePath Condition="'$(GamePath)' == ''">H:\pump it up hwa</GamePath>
     <MLDir>$(GamePath)\MelonLoader</MLDir>
     <Deploy Condition="'$(Deploy)' == ''">false</Deploy>
   </PropertyGroup>
