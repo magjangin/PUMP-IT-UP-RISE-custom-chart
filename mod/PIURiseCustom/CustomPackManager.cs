@@ -8,8 +8,7 @@ namespace PIURiseCustom
 {
     internal sealed class CustomPack
     {
-        // 선곡 목록 주입용 ID: "990001"부터 스캔 순서(경로 사전순)대로 부여.
-        // 폴더를 추가/삭제하면 뒤쪽 곡 ID가 밀린다 — 게임 즐겨찾기 등 ID 기반 로컬 데이터가 다른 곡을 가리킬 수 있음.
+        // 선곡 목록 주입용 ID: "990001"부터 SaveCustomKey/song_ids.txt(SongIdRegistry)에 폴더 경로별로 고정 저장된다.
         public string SongId;
         public string FolderPath;
         public string FolderName;
@@ -290,12 +289,27 @@ namespace PIURiseCustom
                 if (match != null) return match;
             }
 
-            // 3순위: 첫 번째 .ogg → .mp3 → .flac (용량 큰 파일 우선)
-            var ogg = audioNonWav.Where(f => f.EndsWith(".ogg", StringComparison.OrdinalIgnoreCase))
-                .OrderByDescending(f => new FileInfo(f).Length).FirstOrDefault();
-            if (ogg != null) return ogg;
-
-            return audioNonWav.OrderByDescending(f => new FileInfo(f).Length).FirstOrDefault();
+            // 3순위: 첫 번째 .ogg → .mp3 → .flac (용량 큰 파일 우선, 파일당 FileInfo 1회만 조회)
+            string bestOgg = null;
+            long bestOggLen = -1;
+            string bestAny = null;
+            long bestAnyLen = -1;
+            foreach (string f in audioNonWav)
+            {
+                long len;
+                try { len = new FileInfo(f).Length; } catch { len = 0; }
+                if (f.EndsWith(".ogg", StringComparison.OrdinalIgnoreCase) && len > bestOggLen)
+                {
+                    bestOgg = f;
+                    bestOggLen = len;
+                }
+                if (len > bestAnyLen)
+                {
+                    bestAny = f;
+                    bestAnyLen = len;
+                }
+            }
+            return bestOgg ?? bestAny;
         }
 
         private static string FindPreviewBgm(string[] files)
@@ -431,10 +445,9 @@ namespace PIURiseCustom
             try
             {
                 string ext = Path.GetExtension(chartPath)?.ToLowerInvariant();
-                int lineCount = 0;
-                foreach (string raw in Util.ReadAllLinesSmart(chartPath))
+                // 부팅 스캔 시 거대한 BMS 전체를 읽지 않고 헤더 앞부분(최대 200줄 / 32KB)만 읽는다
+                foreach (string raw in Util.ReadFirstLinesSmart(chartPath, maxLines: 200, maxBytes: 32768))
                 {
-                    if (++lineCount > 200) break;
                     string line = raw.Trim().Replace('\t', ' ');
                     if (ext == ".ucs")
                     {

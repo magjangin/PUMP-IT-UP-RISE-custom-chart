@@ -25,8 +25,12 @@ namespace PIURiseCustom
         {
             private static void Prefix(ref Note note, ref int grade)
             {
-                if (SaveCustomConfig.AllPerfect && note != null && grade >= 1 && grade <= 3)
-                    grade = 0;
+                try
+                {
+                    if (SaveCustomConfig.AllPerfect && note != null && grade >= 1 && grade <= 3)
+                        grade = 0;
+                }
+                catch { }
             }
         }
 
@@ -66,14 +70,21 @@ namespace PIURiseCustom
         {
             private static void Prefix(PlayBase __instance)
             {
-                ActivePlayBase = __instance;
+                try
+                {
+                    ActivePlayBase = __instance;
 
-                if (!SaveCustomConfig.AutoPlay || __instance == null || __instance._player == null)
-                    return;
+                    if (!SaveCustomConfig.AutoPlay || __instance == null || __instance._player == null)
+                        return;
 
-                __instance._player.DivAutoPlay = (JUDGE)0;
-                __instance._player.AutoPlay = (JUDGE)0;
-                Mod.Log.Msg("[AutoPlay] PUMPPlayer.DivAutoPlay = (JUDGE)0 (PERFECT) 활성화");
+                    __instance._player.DivAutoPlay = (JUDGE)0;
+                    __instance._player.AutoPlay = (JUDGE)0;
+                    Mod.Log.Msg("[AutoPlay] PUMPPlayer.DivAutoPlay = (JUDGE)0 (PERFECT) 활성화");
+                }
+                catch (Exception ex)
+                {
+                    Mod.Log.Warning($"[AutoPlay] StartSong 초기화 오류(원본 진행): {ex.Message}");
+                }
             }
         }
 
@@ -82,8 +93,13 @@ namespace PIURiseCustom
         {
             private static void Prefix(PUMPPlayer __instance)
             {
-                if (SaveCustomConfig.AutoPlay && __instance != null)
+                if (!SaveCustomConfig.AutoPlay || __instance is null)
+                    return;
+                try
+                {
                     __instance.DivAutoPlay = (JUDGE)0;
+                }
+                catch { }
             }
         }
 
@@ -231,6 +247,13 @@ namespace PIURiseCustom
         {
             _scorePathLogCount = 0;
             _stageNoteSfxKey = null;
+            PlayBase_CoShowNoMiss_MoveNext_Patch.ResetWaiting();
+        }
+
+        internal static void ClearStage()
+        {
+            ActivePlayBase = null;
+            PlayBase_CoShowNoMiss_MoveNext_Patch.ResetWaiting();
         }
 
         private static void LogScorePath(string msg)
@@ -242,7 +265,7 @@ namespace PIURiseCustom
 
         // 5. PERFECT GAME / FULL COMBO 연출(CoShowNoMiss)이 곡 중간에 뜨지 않도록 BGM 막바지까지 대기
         //    - state 0(초기 진입)은 원본대로 통과시켜 중복 실행 방지 플래그를 세우게 하고,
-        //    - state >= 1(실제 연출 발동 직전)에서만 BGM 종료 3.5초 전까지 1프레임씩 유예한다.
+        //    - state >= 1(실제 연출 발동 직전)에서만 BGM 종료 5.5초 전까지 1프레임씩 유예한다.
         [HarmonyPatch]
         internal static class PlayBase_CoShowNoMiss_MoveNext_Patch
         {
@@ -272,6 +295,7 @@ namespace PIURiseCustom
             }
 
             private static bool _loggedWaiting = false;
+            internal static void ResetWaiting() => _loggedWaiting = false;
 
             private static bool Prefix(object __instance, ref bool __result)
             {

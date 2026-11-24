@@ -141,8 +141,16 @@ namespace PIURiseCustom
                 if (channel != CUSTOM_CHANNEL)
                     return true;
 
-                __result = !ModConfig.CustomEnabled.Value || CustomPackManager.CatalogSongs.Count == 0;
-                return false;
+                try
+                {
+                    __result = !ModConfig.CustomEnabled.Value || CustomPackManager.CatalogSongs.Count == 0;
+                    return false;
+                }
+                catch
+                {
+                    __result = true;
+                    return false;
+                }
             }
         }
 

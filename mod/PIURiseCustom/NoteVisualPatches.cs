@@ -140,7 +140,10 @@ namespace PIURiseCustom
                 byte[] bytes = File.ReadAllBytes(path);
                 var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
                 if (!ImageConversion.LoadImage(tex, bytes, false))
+                {
+                    UnityEngine.Object.Destroy(tex);
                     return null;
+                }
                 tex.hideFlags = HideFlags.DontUnloadUnusedAsset;
                 var sp = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), 100f);
                 sp.hideFlags = HideFlags.DontUnloadUnusedAsset;
@@ -272,11 +275,17 @@ namespace PIURiseCustom
             }
         }
 
-        // 매 프레임 한 번만 읽으면 되는 Unity 값(Time.time, Camera.main, Screen.height). 노트마다 다시 읽으면 노트 수만큼 IL2CPP 호출이 난다.
+        // 매 프레임 한 번만 읽으면 되는 Unity 값(Time.time, Camera.main, Screen.height) + 판정선 화면 Y 캐시.
+        // 노트마다 다시 읽으면 노트 수만큼 IL2CPP 호출이 난다.
         private static int _frameCacheIndex = -1;
         private static float _frameTime;
         private static Camera _frameCam;
         private static int _frameScreenH;
+        private static bool _frameJudgeValid;
+        private static float _frameJudgeWorldY;
+        private static float _frameJudgeGuiY;
+        private static bool _frameScrollUp;
+        private static float _frameLaneH;
 
         private static void RefreshFrameCache()
         {
@@ -287,6 +296,16 @@ namespace PIURiseCustom
             _frameTime = Time.time;
             _frameCam = Camera.main;
             _frameScreenH = Screen.height;
+            _frameJudgeValid = false;
+        }
+
+        private static void SetSpriteAlphaIfChanged(SpriteRenderer sr, float alpha)
+        {
+            if (sr == null) return;
+            Color c = sr.color;
+            if (MathF.Abs(c.a - alpha) <= 0.002f) return;
+            c.a = alpha;
+            sr.color = c;
         }
 
         private static float Clamp01(float v) => v < 0f ? 0f : (v > 1f ? 1f : v);
@@ -354,21 +373,24 @@ namespace PIURiseCustom
                     }
 
                     lp.x = origX + wave * ampWorld * damp;
-                    tr.localPosition = lp;
+                    if (!needChaos)
+                        tr.localPosition = lp;
                 }
 
                 // 2. NoteSpeedChaos (매 프레임 origY로 먼저 복원 후 배율 적용 → 누적 폭주 방지)
+                bool hasWorldPos = false;
+                Vector3 wp = default;
                 if (needChaos)
                 {
-                    lp = tr.localPosition;
                     lp.y = origY;
                     tr.localPosition = lp;
 
                     float mult = GetChaosMultiplier(note);
-                    Vector3 wp = tr.position;
+                    wp = tr.position;
                     float dy = wp.y - judgeWorldY;
                     wp.y = judgeWorldY + dy * mult;
                     tr.position = wp;
+                    hasWorldPos = true;
                 }
 
                 // 3. Sudden / Hidden / FadeIn / FadeOut 알파 계산
@@ -377,22 +399,40 @@ namespace PIURiseCustom
                     var cam = _frameCam;
                     if (cam is not null)
                     {
-                        Vector3 wp = tr.position;
+                        if (!hasWorldPos)
+                            wp = tr.position;
                         Vector3 noteScreen = cam.WorldToScreenPoint(wp);
-                        Vector3 judgeWp = wp;
-                        judgeWp.y = judgeWorldY;
-                        Vector3 judgeScreen = cam.WorldToScreenPoint(judgeWp);
                         int screenH = _frameScreenH;
 
-                        // GUI 좌표계(상단=0, 하단=screenH)로 변환
-                        float judgeGuiY = screenH - judgeScreen.y;
-                        float noteGuiY = screenH - noteScreen.y;
+                        // 판정선 화면 좌표는 같은 프레임·같은 judgeWorldY면 한 번만 투영(노트당 WorldToScreenPoint 2회 → 1회)
+                        float judgeGuiY;
+                        bool scrollUp;
+                        float laneHeightPx;
+                        if (_frameJudgeValid && MathF.Abs(judgeWorldY - _frameJudgeWorldY) <= 0.001f)
+                        {
+                            judgeGuiY = _frameJudgeGuiY;
+                            scrollUp = _frameScrollUp;
+                            laneHeightPx = _frameLaneH;
+                        }
+                        else
+                        {
+                            Vector3 judgeWp = wp;
+                            judgeWp.y = judgeWorldY;
+                            Vector3 judgeScreen = cam.WorldToScreenPoint(judgeWp);
+                            judgeGuiY = screenH - judgeScreen.y;
+                            scrollUp = judgeGuiY < screenH * 0.5f;
+                            laneHeightPx = scrollUp
+                                ? MathF.Max(200f, screenH - judgeGuiY)
+                                : MathF.Max(200f, judgeGuiY);
+                            _frameJudgeValid = true;
+                            _frameJudgeWorldY = judgeWorldY;
+                            _frameJudgeGuiY = judgeGuiY;
+                            _frameScrollUp = scrollUp;
+                            _frameLaneH = laneHeightPx;
+                        }
 
-                        // 스크롤 방향 판정: 판정선이 화면 상단 절반에 있으면 아래→위 스크롤
-                        bool scrollUp = judgeGuiY < screenH * 0.5f;
-                        float laneHeightPx = scrollUp
-                            ? MathF.Max(200f, screenH - judgeGuiY)
-                            : MathF.Max(200f, judgeGuiY);
+                        // GUI 좌표계(상단=0, 하단=screenH)로 변환
+                        float noteGuiY = screenH - noteScreen.y;
 
                         LastJudgeScreenY = judgeGuiY;
                         LastLaneScreenHeight = laneHeightPx;
@@ -445,29 +485,13 @@ namespace PIURiseCustom
 
                         if (needCover || needFade)
                         {
-                            if (note._sp != null)
-                            {
-                                Color c = note._sp.color;
-                                c.a = alpha;
-                                note._sp.color = c;
-                            }
-                            if (note._additive != null)
-                            {
-                                Color c = note._additive.color;
-                                c.a = alpha;
-                                note._additive.color = c;
-                            }
+                            SetSpriteAlphaIfChanged(note._sp, alpha);
+                            SetSpriteAlphaIfChanged(note._additive, alpha);
                             if (longNote != null && longNote._renderers != null)
                             {
                                 var rends = longNote._renderers;
                                 for (int i = 0; i < rends.Length; i++)
-                                {
-                                    var sr = rends[i];
-                                    if (sr == null) continue;
-                                    Color c = sr.color;
-                                    c.a = alpha;
-                                    sr.color = c;
-                                }
+                                    SetSpriteAlphaIfChanged(rends[i], alpha);
                             }
                         }
                     }

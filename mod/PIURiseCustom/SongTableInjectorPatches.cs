@@ -222,6 +222,7 @@ namespace PIURiseCustom
                 bool ok = ImageConversion.LoadImage(tex, new Il2CppStructArray<byte>(bytes), false);
                 if (!ok)
                 {
+                    UnityEngine.Object.Destroy(tex);
                     _jacketFailed.Add(jacketPath);
                     Mod.Log.Warning($"[CustomJacket] ImageConversion.LoadImage 실패 ({jacketPath}, {bytes.Length} bytes) — 재시작 전까지 다시 시도하지 않음");
                     return null;
@@ -286,23 +287,27 @@ namespace PIURiseCustom
 
         private static void ApplyCustomJacketToBox(Il2CppAirFishLab.ScrollingList.MSListBox box)
         {
-            if (!ModConfig.CustomEnabled.Value || box == null || box._eyecatchImage == null)
-                return;
-
-            var content = box.Content;
-            if (content == null)
-                return;
-
-            var pack = CustomPackManager.ResolveBySongId(Util.SongId(content.Song));
-            if (pack == null || string.IsNullOrEmpty(pack.JacketPath))
-                return;
-
-            var sprite = LoadOrGetJacket(pack.JacketPath);
-            if (sprite != null)
+            try
             {
-                box._eyecatchImage.sprite = sprite;
-                box._eyecatchImage.color = Color.white;
+                if (!ModConfig.CustomEnabled.Value || box == null || box._eyecatchImage == null)
+                    return;
+
+                var content = box.Content;
+                if (content == null)
+                    return;
+
+                var pack = CustomPackManager.ResolveBySongId(Util.SongId(content.Song));
+                if (pack == null || string.IsNullOrEmpty(pack.JacketPath))
+                    return;
+
+                var sprite = LoadOrGetJacket(pack.JacketPath);
+                if (sprite != null)
+                {
+                    box._eyecatchImage.sprite = sprite;
+                    box._eyecatchImage.color = Color.white;
+                }
             }
+            catch { }
         }
 
         // 커스텀 곡은 잠금 검사 무조건 통과
@@ -311,11 +316,15 @@ namespace PIURiseCustom
         {
             private static bool Prefix(string songID, ref bool __result)
             {
-                if (ModConfig.CustomEnabled.Value && CustomPackManager.IsCatalogSongId(songID))
+                try
                 {
-                    __result = false;
-                    return false;
+                    if (ModConfig.CustomEnabled.Value && CustomPackManager.IsCatalogSongId(songID))
+                    {
+                        __result = false;
+                        return false;
+                    }
                 }
+                catch { }
                 return true;
             }
         }
@@ -483,8 +492,12 @@ namespace PIURiseCustom
         {
             private static void Prefix(ref int level)
             {
-                if (ModConfig.CustomEnabled.Value && Util.IsCurrentSongCustom())
-                    level = LastCustomSelectedLevel;
+                try
+                {
+                    if (ModConfig.CustomEnabled.Value && Util.IsCurrentSongCustom())
+                        level = LastCustomSelectedLevel;
+                }
+                catch { }
             }
         }
 
@@ -493,8 +506,12 @@ namespace PIURiseCustom
         {
             private static void Prefix(ref int lv)
             {
-                if (ModConfig.CustomEnabled.Value && Util.IsCurrentSongCustom())
-                    lv = LastCustomSelectedLevel;
+                try
+                {
+                    if (ModConfig.CustomEnabled.Value && Util.IsCurrentSongCustom())
+                        lv = LastCustomSelectedLevel;
+                }
+                catch { }
             }
         }
 
@@ -504,19 +521,23 @@ namespace PIURiseCustom
         {
             private static void Postfix(ResultDefaultGameInfo __instance, Song song)
             {
-                if (!ModConfig.CustomEnabled.Value || __instance == null || __instance._cover == null)
-                    return;
-
-                var pack = CustomPackManager.ResolveBySongId(song?.ID);
-                if (pack == null || string.IsNullOrEmpty(pack.JacketPath))
-                    return;
-
-                var sprite = LoadOrGetJacket(pack.JacketPath);
-                if (sprite != null)
+                try
                 {
-                    __instance._cover.sprite = sprite;
-                    __instance._cover.color = Color.white;
+                    if (!ModConfig.CustomEnabled.Value || __instance == null || __instance._cover == null)
+                        return;
+
+                    var pack = CustomPackManager.ResolveBySongId(Util.SongId(song));
+                    if (pack == null || string.IsNullOrEmpty(pack.JacketPath))
+                        return;
+
+                    var sprite = LoadOrGetJacket(pack.JacketPath);
+                    if (sprite != null)
+                    {
+                        __instance._cover.sprite = sprite;
+                        __instance._cover.color = Color.white;
+                    }
                 }
+                catch { }
             }
         }
 
@@ -525,20 +546,24 @@ namespace PIURiseCustom
         {
             private static void Postfix(IngameSongInfoUI __instance, Song currentSong)
             {
-                if (!ModConfig.CustomEnabled.Value || __instance == null || __instance._bgImage == null)
-                    return;
-
-                var pack = CustomPackManager.ResolveBySongId(currentSong?.ID);
-                string loadingImg = pack?.LoadingThumbnailPath ?? pack?.JacketPath;
-                if (string.IsNullOrEmpty(loadingImg))
-                    return;
-
-                var sprite = LoadOrGetJacket(loadingImg);
-                if (sprite != null)
+                try
                 {
-                    __instance._bgImage.sprite = sprite;
-                    __instance._bgImage.color = Color.white;
+                    if (!ModConfig.CustomEnabled.Value || __instance == null || __instance._bgImage == null)
+                        return;
+
+                    var pack = CustomPackManager.ResolveBySongId(Util.SongId(currentSong));
+                    string loadingImg = pack?.LoadingThumbnailPath ?? pack?.JacketPath;
+                    if (string.IsNullOrEmpty(loadingImg))
+                        return;
+
+                    var sprite = LoadOrGetJacket(loadingImg);
+                    if (sprite != null)
+                    {
+                        __instance._bgImage.sprite = sprite;
+                        __instance._bgImage.color = Color.white;
+                    }
                 }
+                catch { }
             }
         }
 

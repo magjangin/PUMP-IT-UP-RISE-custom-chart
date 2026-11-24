@@ -19,6 +19,7 @@ namespace PIURiseCustom
         private struct TickData
         {
             public Image Img;
+            public Color BaseColor; // 생성/갱신 시 색을 기억 → 매 프레임 페이드에서 img.color getter(IL2CPP 호출)를 읽지 않는다
             public float Time;
             public bool Active; // SetActive 상태를 관리 쪽에 기억 → 매 프레임 틱마다 gameObject.activeSelf(IL2CPP 호출 2회)를 읽지 않는다
         }
@@ -45,6 +46,9 @@ namespace PIURiseCustom
         private static readonly Image[] _kvBoxes = new Image[5];
         // 레인별 마지막 표시 상태 (-1 = 아직 칠하지 않음). 상태가 바뀔 때만 Image.color를 써서 매 프레임 interop 호출·UI 재빌드를 줄인다.
         private static readonly int[] _kvLastState = { -1, -1, -1, -1, -1 };
+        // 스테이지 동안 키 테이블 4종 래퍼를 재사용(매 프레임 Il2CppStructArray 래퍼 4개 할당 + IL2CPP 필드 getter 4회 제거)
+        private static IntPtr _cachedKeyGimPtr;
+        private static KeyTables _cachedKeyTables;
 
         // LaneCoverDebug UI
         private static GameObject _dbgRoot;
@@ -83,6 +87,8 @@ namespace PIURiseCustom
             for (int i = 0; i < MaxTicks; i++) _ticks[i] = default;
             for (int i = 0; i < _kvBoxes.Length; i++) _kvBoxes[i] = null;
             for (int i = 0; i < _kvLastState.Length; i++) _kvLastState[i] = -1;
+            _cachedKeyGimPtr = IntPtr.Zero;
+            _cachedKeyTables = default;
         }
 
         public static void RecordJudgment(float deltaMs, int grade, JudgeTiming timing)
@@ -102,17 +108,19 @@ namespace PIURiseCustom
                 float maxMs = MathF.Max(120f, _maxWindowMs);
                 float norm = Math.Clamp(deltaMs / maxMs, -1f, 1f);
 
-                var t = _ticks[_tickHead];
+                int slot = _tickHead;
                 _tickHead = (_tickHead + 1) % MaxTicks;
+                var t = _ticks[slot];
                 if (t.Img != null)
                 {
-                    t.Img.color = grade switch
+                    Color col = grade switch
                     {
                         0 => new Color(0.3f, 0.95f, 1f, 0.95f),
                         1 => new Color(0.35f, 1f, 0.45f, 0.95f),
                         2 => new Color(1f, 0.9f, 0.25f, 0.95f),
                         _ => new Color(1f, 0.35f, 0.25f, 0.95f)
                     };
+                    t.Img.color = col;
                     var rt = t.Img.rectTransform;
                     if (_barVertical)
                         rt.anchoredPosition = new Vector2(0f, -norm * (_barH * 0.48f));
@@ -120,7 +128,7 @@ namespace PIURiseCustom
                         rt.anchoredPosition = new Vector2(norm * (_barW * 0.48f), 0f);
                     if (!t.Active)
                         t.Img.gameObject.SetActive(true);
-                    int slot = (_tickHead - 1 + MaxTicks) % MaxTicks;
+                    _ticks[slot].BaseColor = col;
                     _ticks[slot].Time = Time.unscaledTime;
                     _ticks[slot].Active = true;
                 }
@@ -355,7 +363,7 @@ namespace PIURiseCustom
                         }
                         else
                         {
-                            Color c = img.color;
+                            Color c = _ticks[i].BaseColor;
                             float a = 1f - age / 2.5f;
                             c.a = a < 0f ? 0f : a;
                             img.color = c;
@@ -367,18 +375,27 @@ namespace PIURiseCustom
                 if (_kvRoot != null)
                 {
                     var gim = GameInputManager.Instance;
-                    var tables = KeyTables.Fetch(gim);
-                    for (int i = 0; i < 5; i++)
+                    if (gim != null)
                     {
-                        var box = _kvBoxes[i];
-                        if (box == null) continue;
-                        int state = IsLanePressed(gim, tables, i) ? 1 : 0;
-                        if (state == _kvLastState[i]) continue;
-                        _kvLastState[i] = state;
-                        bool isCenter = i == 2;
-                        box.color = state == 1
-                            ? (isCenter ? SaveCustomConfig.KeyViewerGatePressedColor : SaveCustomConfig.KeyViewerPressedColor)
-                            : SaveCustomConfig.KeyViewerNormalColor;
+                        IntPtr gimPtr = gim.Pointer;
+                        if (gimPtr != _cachedKeyGimPtr)
+                        {
+                            _cachedKeyGimPtr = gimPtr;
+                            _cachedKeyTables = KeyTables.Fetch(gim);
+                        }
+                        var tables = _cachedKeyTables;
+                        for (int i = 0; i < 5; i++)
+                        {
+                            var box = _kvBoxes[i];
+                            if (box == null) continue;
+                            int state = IsLanePressed(gim, tables, i) ? 1 : 0;
+                            if (state == _kvLastState[i]) continue;
+                            _kvLastState[i] = state;
+                            bool isCenter = i == 2;
+                            box.color = state == 1
+                                ? (isCenter ? SaveCustomConfig.KeyViewerGatePressedColor : SaveCustomConfig.KeyViewerPressedColor)
+                                : SaveCustomConfig.KeyViewerNormalColor;
+                        }
                     }
                 }
 

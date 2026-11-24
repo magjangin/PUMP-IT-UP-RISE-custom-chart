@@ -197,21 +197,21 @@ namespace PIURiseCustom
                 if (!ModConfig.CustomEnabled.Value)
                     return true;
 
-                bool isMainAudio = prefix == GlobalFunc.HashPrefix.AUDIO;
-                bool isPreview = prefix == GlobalFunc.HashPrefix.PREVIEWAUDIO && ModConfig.OverridePreviewAudio.Value;
-                if (!isMainAudio && !isPreview)
-                    return true;
-
-                var pack = CustomPackManager.Resolve(name, GetCurrentPlayType(), GetCurrentLevel());
-                if (pack == null)
-                    return true;
-
-                string audioPath = isPreview ? (pack.PreviewBgmPath ?? pack.BgmPath) : pack.BgmPath;
-                if (string.IsNullOrEmpty(audioPath))
-                    return true;
-
                 try
                 {
+                    bool isMainAudio = prefix == GlobalFunc.HashPrefix.AUDIO;
+                    bool isPreview = prefix == GlobalFunc.HashPrefix.PREVIEWAUDIO && ModConfig.OverridePreviewAudio.Value;
+                    if (!isMainAudio && !isPreview)
+                        return true;
+
+                    var pack = CustomPackManager.Resolve(name, GetCurrentPlayType(), GetCurrentLevel());
+                    if (pack == null)
+                        return true;
+
+                    string audioPath = isPreview ? (pack.PreviewBgmPath ?? pack.BgmPath) : pack.BgmPath;
+                    if (string.IsNullOrEmpty(audioPath))
+                        return true;
+
                     Mod.Log.Msg($"[CustomBGM] '{pack.Title}' 오디오 주입: {Path.GetFileName(audioPath)} (prefix={prefix}, song={name})");
                     byte[] rawBytes = ReadAudioBytesCached(audioPath);
                     var ilBytes = new Il2CppStructArray<byte>(rawBytes);
@@ -237,12 +237,19 @@ namespace PIURiseCustom
                 if (!ModConfig.CustomEnabled.Value)
                     return true;
 
-                var pack = CustomPackManager.Resolve(name, GetCurrentPlayType(), GetCurrentLevel());
-                if (pack == null || string.IsNullOrEmpty(pack.BgaPath))
-                    return true;
+                try
+                {
+                    var pack = CustomPackManager.Resolve(name, GetCurrentPlayType(), GetCurrentLevel());
+                    if (pack == null || string.IsNullOrEmpty(pack.BgaPath))
+                        return true;
 
-                __instance.NeedCommonBGA = false;
-                return false;
+                    __instance.NeedCommonBGA = false;
+                    return false;
+                }
+                catch
+                {
+                    return true;
+                }
             }
         }
 
@@ -256,12 +263,12 @@ namespace PIURiseCustom
                 if (!ModConfig.CustomEnabled.Value)
                     return true;
 
-                var pack = CustomPackManager.Resolve(name, GetCurrentPlayType(), GetCurrentLevel());
-                if (pack == null || string.IsNullOrEmpty(pack.BgaPath))
-                    return true;
-
                 try
                 {
+                    var pack = CustomPackManager.Resolve(name, GetCurrentPlayType(), GetCurrentLevel());
+                    if (pack == null || string.IsNullOrEmpty(pack.BgaPath))
+                        return true;
+
                     var vp = __instance._BGAPlayer;
                     if (vp == null)
                     {
@@ -321,17 +328,21 @@ namespace PIURiseCustom
                 if (!ModConfig.CustomEnabled.Value || string.IsNullOrEmpty(__0))
                     return true;
 
-                const string previewVideoSuffix = "/previewVideo";
-                if (__0.EndsWith(previewVideoSuffix, StringComparison.OrdinalIgnoreCase))
+                try
                 {
-                    string songId = __0.Substring(0, __0.Length - previewVideoSuffix.Length);
-                    var pack = CustomPackManager.ResolveBySongId(songId);
-                    if (pack != null && (!string.IsNullOrEmpty(pack.BgaPath) || !string.IsNullOrEmpty(pack.BgmPath)))
+                    const string previewVideoSuffix = "/previewVideo";
+                    if (__0.EndsWith(previewVideoSuffix, StringComparison.OrdinalIgnoreCase))
                     {
-                        __result = true;
-                        return false;
+                        string songId = __0.Substring(0, __0.Length - previewVideoSuffix.Length);
+                        var pack = CustomPackManager.ResolveBySongId(songId);
+                        if (pack != null && (!string.IsNullOrEmpty(pack.BgaPath) || !string.IsNullOrEmpty(pack.BgmPath)))
+                        {
+                            __result = true;
+                            return false;
+                        }
                     }
                 }
+                catch { }
                 return true;
             }
         }
@@ -345,19 +356,19 @@ namespace PIURiseCustom
                 if (!ModConfig.CustomEnabled.Value || __instance == null)
                     return true;
 
-                var pack = CustomPackManager.Resolve(index);
-                if (pack == null)
-                    return true;
-
-                if (string.IsNullOrEmpty(pack.BgaPath))
-                {
-                    // BGA는 없고 BGM만 있는 커스텀 곡은 비디오 로드 완료 플래그만 true로 두어 WaitForMediaAndPlay가 음악을 바로 재생하게 함
-                    __instance._isVideoLoaded = true;
-                    return false;
-                }
-
                 try
                 {
+                    var pack = CustomPackManager.Resolve(index);
+                    if (pack == null)
+                        return true;
+
+                    if (string.IsNullOrEmpty(pack.BgaPath))
+                    {
+                        // BGA는 없고 BGM만 있는 커스텀 곡은 비디오 로드 완료 플래그만 true로 두어 WaitForMediaAndPlay가 음악을 바로 재생하게 함
+                        __instance._isVideoLoaded = true;
+                        return false;
+                    }
+
                     var vp = __instance.player;
                     if (vp == null)
                     {
@@ -406,16 +417,20 @@ namespace PIURiseCustom
         {
             private static void Postfix(EyeCatchUI __instance, SongListContent content)
             {
-                if (!ModConfig.CustomEnabled.Value || __instance == null || content == null)
-                    return;
+                try
+                {
+                    if (!ModConfig.CustomEnabled.Value || __instance == null || content == null)
+                        return;
 
-                var pack = CustomPackManager.ResolveBySongId(Util.SongId(content.Song));
-                if (pack == null || string.IsNullOrEmpty(pack.JacketPath))
-                    return;
+                    var pack = CustomPackManager.ResolveBySongId(Util.SongId(content.Song));
+                    if (pack == null || string.IsNullOrEmpty(pack.JacketPath))
+                        return;
 
-                var sprite = SongTableInjectorPatches.LoadOrGetJacket(pack.JacketPath);
-                if (sprite != null && __instance.eyeCatchImage != null)
-                    __instance.eyeCatchImage.sprite = sprite;
+                    var sprite = SongTableInjectorPatches.LoadOrGetJacket(pack.JacketPath);
+                    if (sprite != null && __instance.eyeCatchImage != null)
+                        __instance.eyeCatchImage.sprite = sprite;
+                }
+                catch { }
             }
         }
     }

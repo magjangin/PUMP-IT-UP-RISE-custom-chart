@@ -42,6 +42,41 @@ namespace PIURiseCustom
             return SplitLines(DecodeSmart(bytes));
         }
 
+        /// <summary>
+        /// 큰 차트 파일의 앞부분 헤더만 빠르게 읽는다(부팅 스캔 시 전체 파일 읽기·디코딩 회피).
+        /// UTF-8 멀티바이트 경계가 maxBytes에서 잘릴 수 있으므로, 잘린 끝 1~3바이트를 보정해 디코딩한다.
+        /// </summary>
+        public static string[] ReadFirstLinesSmart(string path, int maxLines = 200, int maxBytes = 32768)
+        {
+            using var fs = File.OpenRead(path);
+            int toRead = (int)Math.Min(fs.Length, maxBytes);
+            byte[] buf = new byte[toRead];
+            int read = 0;
+            while (read < toRead)
+            {
+                int n = fs.Read(buf, read, toRead - read);
+                if (n <= 0) break;
+                read += n;
+            }
+            if (read != buf.Length)
+                Array.Resize(ref buf, read);
+
+            // 파일 끝이 아닌 중간에서 잘렸다면 마지막 개행 직전까지만 취해 멀티바이트 문자 절단을 막는다
+            if (fs.Length > read && read > 0)
+            {
+                int lastNl = Array.LastIndexOf(buf, (byte)'\n');
+                if (lastNl > 0)
+                    Array.Resize(ref buf, lastNl);
+            }
+
+            string[] lines = SplitLines(DecodeSmart(buf));
+            if (lines.Length <= maxLines)
+                return lines;
+            var trimmed = new string[maxLines];
+            Array.Copy(lines, trimmed, maxLines);
+            return trimmed;
+        }
+
         public static string DecodeSmart(byte[] bytes)
         {
             if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
