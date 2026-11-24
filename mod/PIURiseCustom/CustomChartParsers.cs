@@ -1,16 +1,23 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
-using System.Text;
+using System.Threading.Tasks;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using Il2CppPIUMobileStepDLL;
 
 namespace PIURiseCustom
 {
     /// <summary>
-    /// UCS(.ucs) 및 BMS(.bms/.bme/.bml) 차트를 PUMP IT UP RISE의 Il2Cpp Step_t 구조로 직접 파싱한다.
+    /// UCS(.ucs) 및 BMS(.bms/.bme/.bml) 차트를 PUMP IT UP RISE의 Il2Cpp Step_t 구조로 만든다.
     /// 게임 내장 StepLoader.LoadUserStep의 멀티블록(변속) 버그를 회피하고 모든 변속/롱노트를 지원한다.
+    ///
+    /// v0.3.10: 두 단계로 나눴다.
+    ///  1) 파일 → 행 블록(ChartModel, 순수 관리 코드): 선곡 화면에서 곡에 커서가 가면 백그라운드에서 미리 돌리고(Prefetch)
+    ///     결과를 (경로·크기·수정 시각·오프셋) 키로 캐시한다. 곡을 다시 하거나 재시작해도 파일이 그대로면 다시 파싱하지 않는다.
+    ///  2) 행 블록 → Il2Cpp Step_t(BuildStep): Il2Cpp 객체 생성이라 메인 스레드에서만, 매번 새로 만든다
+    ///     (게임이 판정 중 노트 객체를 다룰 수 있어 이전 판의 객체를 재사용하지 않는다).
     /// </summary>
     internal static class CustomChartParsers
     {
@@ -22,44 +29,97 @@ namespace PIURiseCustom
         private const byte ATTR_HOLD_TAIL = 0x5F; // 'W'
         private const byte DEFAULT_VISUAL_EFFECT = 0x03;
 
-        public static Step_t LoadFromFile(string path, float extraOffsetMs, float minDurationSeconds = 0f)
-        {
-            string ext = Path.GetExtension(path)?.ToLowerInvariant();
-            if (ext == ".ucs")
-                return ParseUcs(path, extraOffsetMs, minDurationSeconds);
-            if (ext == ".bms" || ext == ".bme" || ext == ".bml")
-                return ParseBms(path, extraOffsetMs, minDurationSeconds);
+        // Note의 dw(@0x10, uint)는 mAttr(+0) · mVisualEffect(+1) · mBank_Param(+2..3)을 겹쳐 쓴 공용체다.
+        // 세 필드를 따로 쓰면 interop 필드 접근이 노트마다 3번 일어나므로 dw 한 번으로 같은 바이트를 쓴다(리틀엔디언).
+        private static uint PackNote(byte attr) => attr | ((uint)DEFAULT_VISUAL_EFFECT << 8);
+        private static readonly uint DW_EMPTY = PackNote(ATTR_EMPTY);
+        private static readonly uint DW_TAP = PackNote(ATTR_TAP);
+        private static readonly uint DW_HOLD_HEAD = PackNote(ATTR_HOLD_HEAD);
+        private static readonly uint DW_HOLD_BODY = PackNote(ATTR_HOLD_BODY);
+        private static readonly uint DW_HOLD_TAIL = PackNote(ATTR_HOLD_TAIL);
 
-            throw new NotSupportedException($"지원하지 않는 차트 확장자: {ext}");
+        // ===== 파싱 결과 캐시 =====
+        private const int MaxCachedCharts = 8;
+        private static readonly object _cacheLock = new();
+        private static readonly Dictionary<string, Task<ParsedChart>> _cache = new(StringComparer.OrdinalIgnoreCase);
+
+        private static string CacheKey(string path, float extraOffsetMs, float minDurationSeconds)
+        {
+            var fi = new FileInfo(path);
+            return string.Concat(fi.FullName, "|", fi.Length.ToString(CultureInfo.InvariantCulture), "|",
+                fi.LastWriteTimeUtc.Ticks.ToString(CultureInfo.InvariantCulture), "|",
+                extraOffsetMs.ToString("R", CultureInfo.InvariantCulture), "|",
+                minDurationSeconds.ToString("R", CultureInfo.InvariantCulture));
         }
 
-        private static void PadBlocksToMinDuration(int laneCount, List<UcsBlockData> blocks, float minDurationSeconds)
+        /// <summary>
+        /// 캐시에 있으면 그 작업을, 없으면 새 파싱 작업을 돌려준다. background=true면 스레드 풀에서, 아니면 이 자리에서 돌린다.
+        /// </summary>
+        private static Task<ParsedChart> GetOrStartParse(string path, float extraOffsetMs, float minDurationSeconds, bool background, out bool reused)
         {
-            if (minDurationSeconds <= 1f || blocks == null || blocks.Count == 0)
-                return;
-
-            double totalMs = 0.0;
-            foreach (var b in blocks)
+            string key = CacheKey(path, extraOffsetMs, minDurationSeconds);
+            Task<ParsedChart> task;
+            lock (_cacheLock)
             {
-                double msPerLine = 60000.0 / (b.Split * b.Bpm);
-                totalMs += b.DelayMs + b.Rows.Count * msPerLine;
+                if (_cache.TryGetValue(key, out task) && !task.IsFaulted && !task.IsCanceled)
+                {
+                    reused = true;
+                    return task;
+                }
+                if (_cache.Count >= MaxCachedCharts)
+                    _cache.Clear();
+                task = new Task<ParsedChart>(() => ChartModel.Parse(path, extraOffsetMs, minDurationSeconds));
+                _cache[key] = task;
             }
 
-            double targetMs = minDurationSeconds * 1000.0;
-            if (totalMs >= targetMs)
+            reused = false;
+            if (background)
+                task.Start(TaskScheduler.Default);
+            else
+                task.RunSynchronously(TaskScheduler.Default);
+            return task;
+        }
+
+        /// <summary>
+        /// 선곡 화면에서 커서가 곡에 올라갔을 때 부른다. 본게임 로딩 때는 캐시된 결과만 Il2Cpp로 옮기면 된다.
+        /// 실패는 조용히 무시한다(본 로딩에서 다시 시도하며, 그때 오류를 로그로 남긴다).
+        /// </summary>
+        public static void Prefetch(string path, float extraOffsetMs, float minDurationSeconds = 0f)
+        {
+            if (string.IsNullOrEmpty(path))
                 return;
+            try { GetOrStartParse(path, extraOffsetMs, minDurationSeconds, background: true, out _); }
+            catch { }
+        }
 
-            var last = blocks[blocks.Count - 1];
-            double lastMsPerLine = 60000.0 / (last.Split * last.Bpm);
-            int extraRows = (int)Math.Ceiling((targetMs - totalMs) / lastMsPerLine);
-            if (extraRows <= 0)
-                return;
+        public static Step_t LoadFromFile(string path, float extraOffsetMs, float minDurationSeconds = 0f)
+        {
+            var total = Stopwatch.StartNew();
+            var task = GetOrStartParse(path, extraOffsetMs, minDurationSeconds, background: false, out bool reused);
+            bool wasRunning = reused && !task.IsCompleted;
+            ParsedChart chart = task.GetAwaiter().GetResult(); // 파싱 예외는 원래 예외 그대로 호출자에게 간다
+            double waitMs = total.Elapsed.TotalMilliseconds;
 
-            string emptyRow = new string('.', laneCount);
-            for (int i = 0; i < extraRows; i++)
-                last.Rows.Add(emptyRow);
+            // 백그라운드에서 모아 둔 파서 로그는 처음 쓸 때 한 번만 메인 스레드에서 출력한다
+            lock (chart.Logs)
+            {
+                foreach (var (warn, text) in chart.Logs)
+                {
+                    if (warn) Mod.Log?.Warning(text);
+                    else Mod.Log?.Msg(text);
+                }
+                chart.Logs.Clear();
+            }
 
-            Mod.Log?.Msg($"[ChartPad] 채보 끝({totalMs / 1000.0:0.1}s) → BGM 막바지({minDurationSeconds:0.1}s)까지 빈 행 {extraRows}줄 패딩");
+            var build = Stopwatch.StartNew();
+            Step_t step = BuildStep(chart, out int noteObjects);
+            double buildMs = build.Elapsed.TotalMilliseconds;
+
+            string source = !reused ? $"즉시 파싱 {chart.ParseMs:0.0}ms"
+                : wasRunning ? $"미리 읽던 파싱 대기 {waitMs:0.0}ms"
+                : $"캐시 사용(파싱 {chart.ParseMs:0.0}ms는 이미 끝남)";
+            Mod.Log?.Msg($"[ChartPerf] '{Path.GetFileName(path)}' {source}, Il2Cpp 구성 {buildMs:0.0}ms (행 {chart.TotalRows}, 노트 객체 {noteObjects}), 합계 {total.Elapsed.TotalMilliseconds:0.0}ms");
+            return step;
         }
 
         /// <summary>
@@ -67,450 +127,27 @@ namespace PIURiseCustom
         /// </summary>
         public static Step_t CreateEmptyStep(int laneCount = 5, float bpm = 120f, float durationSeconds = 300f)
         {
-            const int split = 2;
-            float clampedBpm = Math.Clamp(bpm, 60f, 300f);
-            int totalRows = Math.Max(16, (int)Math.Ceiling((durationSeconds / 60f) * clampedBpm * split));
-            string emptyRow = new string('.', laneCount);
-
-            var blk = new UcsBlockData
-            {
-                Bpm = clampedBpm,
-                DelayMs = 0f,
-                Beat = 4,
-                Split = split
-            };
-            for (int i = 0; i < totalRows; i++)
-                blk.Rows.Add(emptyRow);
-
-            return BuildStepFromBlocks(laneCount, new List<UcsBlockData> { blk });
+            return BuildStep(ChartModel.CreateEmpty(laneCount, bpm, durationSeconds), out _);
         }
 
-        private sealed class UcsBlockData
-        {
-            public float Bpm = 120f;
-            public float DelayMs = 0f;
-            public int Beat = 4;
-            public int Split = 2;
-            public readonly List<string> Rows = new();
-        }
-
-        /// <summary>
-        /// 표준 펌프 잇 업 UCS 파서 (단일/멀티블록 변속 완벽 지원).
-        /// </summary>
-        public static Step_t ParseUcs(string path, float extraOffsetMs, float minDurationSeconds = 0f)
-        {
-            string[] lines = Util.ReadAllLinesSmart(path);
-            int laneCount = 5;
-            var blocks = new List<UcsBlockData>();
-            UcsBlockData cur = null;
-            bool readingHeaders = true;
-
-            foreach (string rawLine in lines)
-            {
-                string line = rawLine.Trim();
-                if (string.IsNullOrEmpty(line))
-                    continue;
-
-                if (line.StartsWith(":", StringComparison.Ordinal))
-                {
-                    int eq = line.IndexOf('=');
-                    if (eq < 0) continue;
-                    string key = line.Substring(1, eq - 1).Trim();
-                    string val = line.Substring(eq + 1).Trim();
-
-                    if (key.Equals("Format", StringComparison.OrdinalIgnoreCase))
-                        continue;
-
-                    if (key.Equals("Mode", StringComparison.OrdinalIgnoreCase))
-                    {
-                        // Double / D-Performance 등은 10레인, Single / S-Performance는 5레인
-                        laneCount = val.IndexOf('D', StringComparison.OrdinalIgnoreCase) >= 0 ? 10 : 5;
-                        continue;
-                    }
-
-                    if (!readingHeaders || cur == null)
-                    {
-                        cur = new UcsBlockData();
-                        if (blocks.Count > 0)
-                        {
-                            var prev = blocks[blocks.Count - 1];
-                            cur.Bpm = prev.Bpm;
-                            cur.Beat = prev.Beat;
-                            cur.Split = prev.Split;
-                        }
-                        blocks.Add(cur);
-                        readingHeaders = true;
-                    }
-
-                    if (float.TryParse(val, NumberStyles.Float, CultureInfo.InvariantCulture, out float fval))
-                    {
-                        if (key.Equals("BPM", StringComparison.OrdinalIgnoreCase))
-                            cur.Bpm = Math.Clamp(fval, 0.1f, 999f);
-                        else if (key.Equals("Delay", StringComparison.OrdinalIgnoreCase))
-                            cur.DelayMs = Math.Clamp(fval, -999999f, 999999f);
-                        else if (key.Equals("Beat", StringComparison.OrdinalIgnoreCase))
-                            cur.Beat = Math.Clamp((int)fval, 1, 64);
-                        else if (key.Equals("Split", StringComparison.OrdinalIgnoreCase))
-                            cur.Split = Math.Clamp((int)fval, 1, 128);
-                    }
-                }
-                else
-                {
-                    if (cur == null)
-                    {
-                        cur = new UcsBlockData();
-                        blocks.Add(cur);
-                    }
-                    readingHeaders = false;
-                    cur.Rows.Add(line);
-                }
-            }
-
-            if (blocks.Count == 0)
-                throw new InvalidDataException("UCS 파일에 블록 데이터가 없습니다.");
-
-            // 첫 블록에만 사용자 공통 오프셋(extraOffsetMs) 적용
-            blocks[0].DelayMs += extraOffsetMs;
-            PadBlocksToMinDuration(laneCount, blocks, minDurationSeconds);
-
-            return BuildStepFromBlocks(laneCount, blocks);
-        }
-
-        /// <summary>
-        /// BMS(.bms/.bme/.bml)를 펌프 잇 업 5키(Single) Step_t로 변환한다.
-        /// 틱(박) 기반 시간 계산(time = beat * 60000 / bpm, 1마디 = 4박 기준) 사용.
-        /// </summary>
-        public static Step_t ParseBms(string path, float extraOffsetMs, float minDurationSeconds = 0f)
-        {
-            // UTF-8 → CP949(EUC-KR) → Shift-JIS 자동 판별 (데이터 라인은 ASCII라 인코딩과 무관, 헤더 문자열만 영향)
-            string[] lines = Util.ReadAllLinesSmart(path);
-
-            double baseBpm = 120.0;
-            var extBpm = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
-            var measureLen = new Dictionary<int, double>();
-            var holdStartWavIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var holdEndWavIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            // 롱노트는 키음 이름(#WAVxx 홀드 시작/끝) 방식만 쓴다. 표준 BMS 롱노트(LNTYPE 1의 5x 채널, #LNOBJ)는
-            // 사용자가 쓰지 않아 지원하지 않는다(v0.3.5에 들어갔다가 v0.3.7에서 제거). 5x 채널은 무시되고 #LNOBJ 끝 표식은 단타로 읽힌다.
-            // (measure, lane 0..4, posInMeasure 0..1, objId)
-            var rawNotes = new List<(int measure, int lane, double frac, string id)>();
-            var bpmChanges = new List<(int measure, double frac, double bpm)>();
-            int maxMeasure = 0;
-            int wavKeyLen = 2; // 2자리(#WAV01) 기본, 3자리(#WAV001) 감지 시 자동 전환
-            int extBpmKeyLen = 2; // #BPM01 / #BPM001 (채널 08 토큰 길이). #WAV 자릿수와 따로 본다
-
-            foreach (string rawLine in lines)
-            {
-                string line = rawLine.Trim();
-                if (!line.StartsWith("#", StringComparison.Ordinal))
-                    continue;
-                // 탭으로 구분한 헤더(#BPM\t140, #WAV01\t홀드 시작.wav)도 공백과 똑같이 읽는다
-                if (line.IndexOf('\t') >= 0)
-                    line = line.Replace('\t', ' ');
-
-                // 헤더: #BPM 140
-                if (line.StartsWith("#BPM ", StringComparison.OrdinalIgnoreCase))
-                {
-                    if (double.TryParse(line.Substring(5).Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double b) && b > 0)
-                        baseBpm = b;
-                    continue;
-                }
-
-                // 확장 BPM: #BPM01 180.5 또는 #BPM001 180.5
-                if (line.StartsWith("#BPM", StringComparison.OrdinalIgnoreCase) && line.Length > 6)
-                {
-                    int sp = line.IndexOf(' ');
-                    if (sp == 6 || sp == 7)
-                    {
-                        string key = line.Substring(4, sp - 4).Trim();
-                        if (key.Length == 3) extBpmKeyLen = 3;
-                        if (double.TryParse(line.Substring(sp + 1).Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double b) && b > 0)
-                            extBpm[key] = b;
-                        continue;
-                    }
-                }
-
-                // 키음 정의: #WAV06 / #WAV006 홀드 시작.wav, #WAV07 / #WAV007 홀드 끝.wav (2자리/3자리 모두 지원)
-                if (line.StartsWith("#WAV", StringComparison.OrdinalIgnoreCase) && line.Length > 6)
-                {
-                    int sp = line.IndexOf(' ');
-                    if (sp > 4)
-                    {
-                        string key = line.Substring(4, sp - 4).Trim();
-                        if (key.Length == 3) wavKeyLen = 3;
-                        string wavName = line.Substring(sp + 1).Trim();
-                        string norm = wavName.ToLowerInvariant().Replace(" ", "").Replace("_", "").Replace("-", "");
-                        if (norm.Contains("홀드시작") || norm.Contains("holdstart") || norm.Contains("longstart") || norm.Contains("lnstart"))
-                            holdStartWavIds.Add(key);
-                        else if (norm.Contains("홀드끝") || norm.Contains("holdend") || norm.Contains("longend") || norm.Contains("lnend"))
-                            holdEndWavIds.Add(key);
-                        continue;
-                    }
-                }
-
-                // 데이터 라인: #MMMCC:DATA
-                int colon = line.IndexOf(':');
-                if (colon != 6)
-                    continue;
-
-                if (!int.TryParse(line.Substring(1, 3), out int measure))
-                    continue;
-
-                string channel = line.Substring(4, 2).ToUpperInvariant();
-                string data = line.Substring(7).Trim();
-                if (string.IsNullOrEmpty(data))
-                    continue;
-
-                if (measure > maxMeasure) maxMeasure = measure;
-
-                // 마디 길이 배율 (채널 02)
-                if (channel == "02")
-                {
-                    if (double.TryParse(data, NumberStyles.Float, CultureInfo.InvariantCulture, out double ratio) && ratio > 0)
-                        measureLen[measure] = ratio;
-                    continue;
-                }
-
-                // 토큰 길이: 03(16진 BPM)은 항상 2자리, 08은 #BPMxx 자릿수, 나머지는 #WAVxx 자릿수.
-                // 예전엔 3자리 #WAV 차트에서 03 채널 "780000"을 "780"/"000"으로 잘라 BPM 1920으로 읽었다.
-                int tokLen;
-                if (channel == "03") tokLen = 2;
-                else if (channel == "08") tokLen = (extBpmKeyLen == 3 && data.Length % 3 == 0) ? 3 : 2;
-                else tokLen = (wavKeyLen == 3 && data.Length % 3 == 0) ? 3 : 2;
-                string zeroTok = tokLen == 3 ? "000" : "00";
-                int count = data.Length / tokLen;
-                if (count <= 0) continue;
-
-                // BPM 변경 (03: 16진수, 08: 확장 BPM)
-                if (channel == "03" || channel == "08")
-                {
-                    for (int i = 0; i < count; i++)
-                    {
-                        string obj = data.Substring(i * tokLen, tokLen);
-                        if (obj == zeroTok) continue;
-                        double frac = (double)i / count;
-                        if (channel == "03")
-                        {
-                            if (int.TryParse(obj, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int hexBpm) && hexBpm > 0)
-                                bpmChanges.Add((measure, frac, hexBpm));
-                        }
-                        else if (extBpm.TryGetValue(obj, out double eb))
-                        {
-                            bpmChanges.Add((measure, frac, eb));
-                        }
-                    }
-                    continue;
-                }
-
-                // 5키 일반 노트 채널 매핑 (16, 11, 12, 13, 14 / 홀드 키음 매칭으로 처리)
-                int lane = MapBmsChannelToPiuLane(channel);
-                if (lane < 0) continue;
-
-                for (int i = 0; i < count; i++)
-                {
-                    string obj = data.Substring(i * tokLen, tokLen);
-                    if (obj == zeroTok) continue;
-                    rawNotes.Add((measure, lane, (double)i / count, obj));
-                }
-            }
-
-            if (rawNotes.Count == 0)
-            {
-                Mod.Log?.Msg($"[BMS Parser] '{Path.GetFileName(path)}' -> 비어있는 BMS (BPM={baseBpm}), 빈 Step_t 생성");
-                return CreateEmptyStep(5, (float)baseBpm, 300f);
-            }
-
-            const int laneCount = 5;
-
-            // 마디별 누적 박(beat, 1마디 = 4.0 * ratio 박) 계산
-            double[] measureStartBeat = new double[maxMeasure + 2];
-            for (int m = 0; m <= maxMeasure; m++)
-            {
-                double len = measureLen.TryGetValue(m, out double r) ? r : 1.0;
-                measureStartBeat[m + 1] = measureStartBeat[m] + 4.0 * len;
-            }
-
-            // 1박당 분할 수(split): 노트·변속 위치를 정확히 표현하는 가장 작은 값을 고른다.
-            // 예전엔 16 고정이라 (1) 셋잇단(12·24분 등)이 반올림으로 어긋나고 (2) 8비트 위주 차트도 행이 2배로 늘어
-            // 행×레인마다 Il2Cpp Note 객체를 만드는 BuildStepFromBlocks가 불필요하게 무거웠다.
-            int split = ChooseBeatSplit(rawNotes, bpmChanges, measureStartBeat);
-            double totalBeats = measureStartBeat[maxMeasure + 1];
-            int totalRows = (int)Math.Ceiling(totalBeats * split) + split * 4;
-
-            // 그리드 초기화
-            char[,] grid = new char[totalRows, laneCount];
-            for (int r = 0; r < totalRows; r++)
-                for (int c = 0; c < laneCount; c++)
-                    grid[r, c] = '.';
-
-            // 롱노트 페어링용: 키음 이름(홀드 시작/끝)
-            var lnOpenRow = new int[laneCount];
-            Array.Fill(lnOpenRow, -1);
-            int orphanHolds = 0;
-
-            void PlaceHold(int ln, int s, int e)
-            {
-                if (e <= s)
-                {
-                    grid[s, ln] = 'X';
-                    return;
-                }
-                grid[s, ln] = 'M';
-                for (int r = s + 1; r < e; r++)
-                    grid[r, ln] = 'H';
-                grid[e, ln] = 'W';
-            }
-
-            // 짝이 없는 홀드 시작은 예전엔 노트가 통째로 사라졌다 → 단타로 남긴다
-            void CloseOrphan(int[] open, int ln)
-            {
-                if (open[ln] < 0) return;
-                if (grid[open[ln], ln] == '.') grid[open[ln], ln] = 'X';
-                open[ln] = -1;
-                orphanHolds++;
-            }
-
-            rawNotes.Sort((a, b) =>
-            {
-                double ba = measureStartBeat[a.measure] + a.frac * (measureStartBeat[a.measure + 1] - measureStartBeat[a.measure]);
-                double bb = measureStartBeat[b.measure] + b.frac * (measureStartBeat[b.measure + 1] - measureStartBeat[b.measure]);
-                return ba.CompareTo(bb);
-            });
-
-            foreach (var n in rawNotes)
-            {
-                double mBeats = measureStartBeat[n.measure + 1] - measureStartBeat[n.measure];
-                double beatPos = measureStartBeat[n.measure] + n.frac * mBeats;
-                int row = Math.Clamp((int)Math.Round(beatPos * split), 0, totalRows - 1);
-
-                if (holdStartWavIds.Contains(n.id))
-                {
-                    CloseOrphan(lnOpenRow, n.lane); // 끝 없이 다시 시작하면 앞의 시작은 단타
-                    lnOpenRow[n.lane] = row;
-                }
-                else if (holdEndWavIds.Contains(n.id))
-                {
-                    if (lnOpenRow[n.lane] >= 0)
-                    {
-                        PlaceHold(n.lane, lnOpenRow[n.lane], row);
-                        lnOpenRow[n.lane] = -1;
-                    }
-                    else if (grid[row, n.lane] == '.')
-                    {
-                        grid[row, n.lane] = 'X';
-                    }
-                }
-                else
-                {
-                    if (grid[row, n.lane] == '.')
-                        grid[row, n.lane] = 'X';
-                }
-            }
-
-            for (int c = 0; c < laneCount; c++)
-            {
-                CloseOrphan(lnOpenRow, c);
-            }
-            if (orphanHolds > 0)
-                Mod.Log?.Warning($"[BMS Parser] '{Path.GetFileName(path)}' 홀드 끝 키음이 없는 롱노트 시작 {orphanHolds}개 → 단타로 배치");
-
-            // BPM 변경 지점을 행(row) 기준으로 정렬하여 블록 분할
-            var bpmEvents = new SortedDictionary<int, double>();
-            bpmEvents[0] = baseBpm;
-            foreach (var bc in bpmChanges)
-            {
-                double mBeats = measureStartBeat[bc.measure + 1] - measureStartBeat[bc.measure];
-                double beatPos = measureStartBeat[bc.measure] + bc.frac * mBeats;
-                int row = Math.Clamp((int)Math.Round(beatPos * split), 0, totalRows - 1);
-                bpmEvents[row] = bc.bpm;
-            }
-
-            var blockStarts = new List<int>(bpmEvents.Keys);
-            var blocks = new List<UcsBlockData>();
-
-            for (int bi = 0; bi < blockStarts.Count; bi++)
-            {
-                int startRow = blockStarts[bi];
-                int endRow = (bi + 1 < blockStarts.Count) ? blockStarts[bi + 1] : totalRows;
-                if (endRow <= startRow) continue;
-
-                var blk = new UcsBlockData
-                {
-                    Bpm = (float)Math.Clamp(bpmEvents[startRow], 0.1, 999.0),
-                    DelayMs = bi == 0 ? extraOffsetMs : 0f,
-                    Beat = 4,
-                    Split = split
-                };
-
-                var sb = new StringBuilder(laneCount);
-                for (int r = startRow; r < endRow; r++)
-                {
-                    sb.Clear();
-                    for (int c = 0; c < laneCount; c++)
-                        sb.Append(grid[r, c]);
-                    blk.Rows.Add(sb.ToString());
-                }
-
-                blocks.Add(blk);
-            }
-
-            PadBlocksToMinDuration(laneCount, blocks, minDurationSeconds);
-            Mod.Log?.Msg($"[BMS Parser] '{Path.GetFileName(path)}' -> {laneCount}키, BPM={baseBpm}, Split={split}, 블록 {blocks.Count}개, 총 {totalRows}행 변환 완료");
-            return BuildStepFromBlocks(laneCount, blocks);
-        }
-
-        // 1박당 분할 후보 (4분 기준 4=16분, 12=셋잇단 16분, 48=192분 해상도 …). nBeatSplit은 byte, UCS Split 상한 128.
-        private static readonly int[] SplitCandidates = { 4, 8, 12, 16, 24, 32, 48, 64, 96 };
-        private const int FallbackSplit = 48;
-
-        private static int ChooseBeatSplit(
-            List<(int measure, int lane, double frac, string id)> notes,
-            List<(int measure, double frac, double bpm)> bpmChanges,
-            double[] measureStartBeat)
-        {
-            double BeatOf(int measure, double frac) =>
-                measureStartBeat[measure] + frac * (measureStartBeat[measure + 1] - measureStartBeat[measure]);
-
-            var beats = new List<double>(notes.Count + bpmChanges.Count);
-            foreach (var n in notes) beats.Add(BeatOf(n.measure, n.frac));
-            foreach (var b in bpmChanges) beats.Add(BeatOf(b.measure, b.frac));
-
-            foreach (int s in SplitCandidates)
-            {
-                bool exact = true;
-                foreach (double beat in beats)
-                {
-                    double v = beat * s;
-                    if (Math.Abs(v - Math.Round(v)) > 1e-4)
-                    {
-                        exact = false;
-                        break;
-                    }
-                }
-                if (exact)
-                    return s;
-            }
-
-            Mod.Log?.Msg($"[BMS Parser] 정확히 맞는 분할이 없어 Split={FallbackSplit}로 반올림 배치 (5·7연음 등)");
-            return FallbackSplit;
-        }
-
-        private static int MapBmsChannelToPiuLane(string ch)
+        private static uint PackedFor(char ch)
         {
             switch (ch)
             {
-                // 5키 전용 (에디터 좌→우 5레인: 16, 11, 12, 13, 14 -> 펌프 0~4: ↙ ↖ ◎ ↗ ↘)
-                case "16": return 0;
-                case "11": return 1;
-                case "12": return 2;
-                case "13": return 3;
-                case "14": return 4;
-                default: return -1;
+                case 'X': case 'x': return DW_TAP;
+                case 'M': case 'm': return DW_HOLD_HEAD;
+                case 'H': case 'h': return DW_HOLD_BODY;
+                case 'W': case 'w': return DW_HOLD_TAIL;
+                default: return DW_EMPTY;
             }
         }
 
-        private static Step_t BuildStepFromBlocks(int laneCount, List<UcsBlockData> blocks)
+        private static Step_t BuildStep(ParsedChart chart, out int noteObjects)
         {
+            int laneCount = chart.LaneCount;
+            var blocks = chart.Blocks;
+            noteObjects = 0;
+
             var step = new Step_t
             {
                 nNoteOffset = 0,
@@ -549,24 +186,12 @@ namespace PIURiseCustom
                     var noteArr = new Il2CppReferenceArray<Note>(laneCount);
                     for (int c = 0; c < laneCount; c++)
                     {
-                        char ch = c < rowStr.Length ? rowStr[c] : '.';
-                        byte attr = ch switch
-                        {
-                            'X' or 'x' => ATTR_TAP,
-                            'M' or 'm' => ATTR_HOLD_HEAD,
-                            'H' or 'h' => ATTR_HOLD_BODY,
-                            'W' or 'w' => ATTR_HOLD_TAIL,
-                            _ => ATTR_EMPTY
-                        };
-
-                        var note = new Note
-                        {
-                            mAttr = attr,
-                            mVisualEffect = DEFAULT_VISUAL_EFFECT,
-                            mBank_Param = 0
-                        };
+                        // mExtra(+0x14)는 새 객체에서 이미 0이다. dw 한 번으로 mAttr·mVisualEffect·mBank_Param을 쓴다.
+                        var note = new Note();
+                        note.dw = PackedFor(c < rowStr.Length ? rowStr[c] : '.');
                         noteArr[c] = note;
                     }
+                    noteObjects += laneCount;
                     lineList.Add(noteArr);
                 }
 
