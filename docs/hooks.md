@@ -42,7 +42,7 @@ JUDGE 열거형: 0 Perfect, 1 Great, 2 Good, 3 Bad, 4 Miss (src_dummy\PIUMobileS
 | `SteamManager.CheckAllDLCStatus()` | 0x7DB090 | 시그니처만 | DLC 소유 확인 |
 | `SteamManager.IsDLCInstalled(uint appID)` | 0x7DBA90 | 시그니처만 | DLC 설치 확인 |
 
-## 4. PIURiseCustom v0.3.5 실제 패치 목록 (속성 기반 60개 + 동적 2개)
+## 4. PIURiseCustom v0.3.8 실제 패치 목록 (속성 기반 60개 + 동적 2개)
 
 v0.3.2는 63개(2026-11-23 실기 부팅 63/63), v0.3.3은 61개, v0.3.4도 61개, v0.3.5는 로그 전용 `PlayBase.GetScoreAndAccuracy` 훅(값 형식 반환 → 박싱 크래시 위험, 호출 0회)을 빼서 60개. v0.3.3부터 노트 비주얼 `LateUpdate` 훅 2개는 `SafePatcher` 집계에서 빠지고, 비주얼 기능이 하나라도 켜졌을 때만 `MainStage.Start`에서 붙는다(`NoteVisualPatches.LateUpdateHooks.Sync`).
 
@@ -67,7 +67,7 @@ RVA 대신 **이름**으로 걸린다. 게임 업데이트 후 `[Patch] … 실�
 | 노트 비주얼 | `SpliteScript.Init`(속성), `SpliteScript.LateUpdate`·`LongSpliteScript.LateUpdate`(동적, `AccessTools.DeclaredMethod`) | Postfix | Sway/Chaos/Sudden/Hidden/Fade/CustomNotes 꺼짐. 동적 훅 실패는 `[Patch]`가 아니라 `[NoteVisual] … 실패` 경고로 나온다 |
 | 마라톤 | `ResultUI.DoEscape`·`OnShow`·`OnHide` | Prefix/Postfix | 마라톤 꺼짐 |
 | 스테이지 수명 | `MainStage.Start`·`SaveResult`·`OnDisable`·`OnDestroy`, `PUMPPlayer.JudgeStep_PostProcess`(판정 집계) | Prefix/Postfix | config 핫리로드·오버레이 정리 안 됨 |
-| 온라인 결과 보류 | `NetworkManager.Send`(위 오프라인 행과 같은 훅, `OfflineMode=0`일 때) | Prefix | 커스텀 곡·AutoPlay·AllPerfect 결과가 서버로 전송될 수 있음 — 실패 시 온라인 플레이 금지 |
+| 온라인 결과 보류 | `NetworkManager.Send`, `CommonUtil.SetPlayLogAtServer`(위 오프라인 행과 같은 훅, `OfflineMode=0`일 때) | Prefix | 커스텀 곡·AutoPlay·AllPerfect 결과·플레이 로그가 서버로 전송될 수 있음 — 실패 시 온라인 플레이 금지 |
 
 ## 5. 게임 업데이트 후 점검 절차
 

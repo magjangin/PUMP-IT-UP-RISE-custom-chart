@@ -213,8 +213,8 @@ LaneCoverDebug=0
                 // [판정바]
                 if (map.TryGetValue("EnableJudgmentBar", out v)) EnableJudgmentBar = ParseBool(v, EnableJudgmentBar);
                 if (map.TryGetValue("JudgmentBarVertical", out v)) JudgmentBarVertical = ParseBool(v, JudgmentBarVertical);
-                if (map.TryGetValue("JudgmentBarShape", out v)) JudgmentBarShape = Mathf.Clamp(ParseInt(v, JudgmentBarShape), 0, 2);
-                if (map.TryGetValue("JudgmentBarRangeShape", out v)) JudgmentBarRangeShape = Mathf.Clamp(ParseInt(v, JudgmentBarRangeShape), -1, 2);
+                if (map.TryGetValue("JudgmentBarShape", out v)) JudgmentBarShape = Math.Clamp(ParseInt(v, JudgmentBarShape), 0, 2);
+                if (map.TryGetValue("JudgmentBarRangeShape", out v)) JudgmentBarRangeShape = Math.Clamp(ParseInt(v, JudgmentBarRangeShape), -1, 2);
                 if (map.TryGetValue("JudgmentBarSide", out v) && !string.IsNullOrWhiteSpace(v)) JudgmentBarSide = v.Trim();
 
                 // [키뷰어]
@@ -228,35 +228,35 @@ LaneCoverDebug=0
                 if (map.TryGetValue("NoteSwayAmplitude", out v)) NoteSwayAmplitude = ParseFloat(v, NoteSwayAmplitude);
                 if (map.TryGetValue("NoteSwaySpeed", out v)) NoteSwaySpeed = ParseFloat(v, NoteSwaySpeed);
                 if (map.TryGetValue("NoteSwayDamping", out v)) NoteSwayDamping = ParseBool(v, NoteSwayDamping);
-                if (map.TryGetValue("NoteSwayDampingTime", out v)) NoteSwayDampingTime = Mathf.Max(0.001f, ParseFloat(v, NoteSwayDampingTime));
+                if (map.TryGetValue("NoteSwayDampingTime", out v)) NoteSwayDampingTime = MathF.Max(0.001f, ParseFloat(v, NoteSwayDampingTime));
 
                 // [노트 속도 카오스]
                 if (map.TryGetValue("NoteSpeedChaos", out v)) NoteSpeedChaos = ParseBool(v, NoteSpeedChaos);
-                if (map.TryGetValue("NoteSpeedChaosMin", out v)) NoteSpeedChaosMin = Mathf.Max(0.1f, ParseFloat(v, NoteSpeedChaosMin));
-                if (map.TryGetValue("NoteSpeedChaosMax", out v)) NoteSpeedChaosMax = Mathf.Max(NoteSpeedChaosMin, ParseFloat(v, NoteSpeedChaosMax));
+                if (map.TryGetValue("NoteSpeedChaosMin", out v)) NoteSpeedChaosMin = MathF.Max(0.1f, ParseFloat(v, NoteSpeedChaosMin));
+                if (map.TryGetValue("NoteSpeedChaosMax", out v)) NoteSpeedChaosMax = MathF.Max(NoteSpeedChaosMin, ParseFloat(v, NoteSpeedChaosMax));
                 if (map.TryGetValue("NoteSpeedChaosPerLane", out v)) NoteSpeedChaosPerLane = ParseBool(v, NoteSpeedChaosPerLane);
 
                 // [커스텀 노트 스킨]
                 if (map.TryGetValue("CustomNotes", out v)) CustomNotes = ParseBool(v, CustomNotes);
 
                 // [서든 / 히든]
-                if (map.TryGetValue("Sudden", out v)) Sudden = Mathf.Clamp(ParseFloat(v, Sudden), 0f, 90f);
-                if (map.TryGetValue("Hidden", out v)) Hidden = Mathf.Clamp(ParseFloat(v, Hidden), 0f, 90f);
+                if (map.TryGetValue("Sudden", out v)) Sudden = Math.Clamp(ParseFloat(v, Sudden), 0f, 90f);
+                if (map.TryGetValue("Hidden", out v)) Hidden = Math.Clamp(ParseFloat(v, Hidden), 0f, 90f);
                 if (Sudden + Hidden > 90f)
-                    Hidden = Mathf.Max(0f, 90f - Sudden);
-                if (map.TryGetValue("LaneCoverSoftness", out v)) LaneCoverSoftness = Mathf.Max(0f, ParseFloat(v, LaneCoverSoftness));
+                    Hidden = MathF.Max(0f, 90f - Sudden);
+                if (map.TryGetValue("LaneCoverSoftness", out v)) LaneCoverSoftness = MathF.Max(0f, ParseFloat(v, LaneCoverSoftness));
 
                 // [페이드 인 / 페이드 아웃]
                 if (map.TryGetValue("FadeIn", out v)) FadeIn = ParseBool(v, FadeIn);
-                if (map.TryGetValue("FadeInStart", out v)) FadeInStart = Mathf.Clamp(ParseFloat(v, FadeInStart), 0f, 100f);
-                if (map.TryGetValue("FadeInLength", out v)) FadeInLength = Mathf.Clamp(ParseFloat(v, FadeInLength), 0.1f, 100f);
+                if (map.TryGetValue("FadeInStart", out v)) FadeInStart = Math.Clamp(ParseFloat(v, FadeInStart), 0f, 100f);
+                if (map.TryGetValue("FadeInLength", out v)) FadeInLength = Math.Clamp(ParseFloat(v, FadeInLength), 0.1f, 100f);
                 if (map.TryGetValue("FadeOut", out v)) FadeOut = ParseBool(v, FadeOut);
-                if (map.TryGetValue("FadeOutStart", out v)) FadeOutStart = Mathf.Clamp(ParseFloat(v, FadeOutStart), 0f, 100f);
-                if (map.TryGetValue("FadeOutLength", out v)) FadeOutLength = Mathf.Clamp(ParseFloat(v, FadeOutLength), 0.1f, 100f);
+                if (map.TryGetValue("FadeOutStart", out v)) FadeOutStart = Math.Clamp(ParseFloat(v, FadeOutStart), 0f, 100f);
+                if (map.TryGetValue("FadeOutLength", out v)) FadeOutLength = Math.Clamp(ParseFloat(v, FadeOutLength), 0.1f, 100f);
 
                 // [커스텀 곡 마라톤]
                 if (map.TryGetValue("CustomMarathon", out v)) CustomMarathon = ParseBool(v, CustomMarathon);
-                if (map.TryGetValue("CustomMarathonAutoNext", out v)) CustomMarathonAutoNext = Mathf.Max(0f, ParseFloat(v, CustomMarathonAutoNext));
+                if (map.TryGetValue("CustomMarathonAutoNext", out v)) CustomMarathonAutoNext = MathF.Max(0f, ParseFloat(v, CustomMarathonAutoNext));
 
                 // [진단]
                 if (map.TryGetValue("LaneCoverDebug", out v)) LaneCoverDebug = ParseBool(v, LaneCoverDebug);

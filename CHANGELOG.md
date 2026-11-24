@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.3.8] - 2026-11-24
+
+### 안전·버그 수정
+- **온라인 플레이 로그 보호 일관화**: `OfflineMode=0`에서 `AutoPlay` 또는 `AllPerfect`로 공식 곡을 플레이할 때도 `CommonUtil.SetPlayLogAtServer` 앞단에서 전송을 보류합니다(`[OnlineGuard]`, 기존엔 커스텀 곡만 차단).
+- **텍스처 디코딩 실패 누수 방지**: `LoadOrGetJacket`·`LoadSpriteFromPng`에서 `ImageConversion.LoadImage`가 실패하면 생성한 `Texture2D`를 즉시 `Destroy`합니다.
+- **스테이지 종료 시 참조 정리**: `MainStage` 종료(`SaveResult`·`OnDisable`·`OnDestroy`·씬 전환) 시 `GameplayOptionPatches.ActivePlayBase` 참조와 클리어 연출 대기 상태를 함께 정리합니다.
+
+### 업데이트 내성
+- **관문 Prefix·UI Postfix 예외 격리 확대**: `AudioManager.LoadMusicSound`, `BGAPlayer.NeedCommonBgaChecker`·`Load`, `GlobalFunc.DoesAssetExists`, `EyeCatchUI.PreparePreviewVideo`·`UpdateSong`, `MainStation.CheckSongLock`, `Mk2SongLoader.IsEmpty`, `PUMPPlayer.JudgeNote`·`DrawStep`, `PlayBase.StartSong`, `IngameSongInfoUI`·`ResultDefaultGameInfo`·`MSListBox` 패치에 `try/catch`를 보강해, 게임 업데이트로 필드가 바뀌어도 원본 실행이나 공식 UI가 깨지지 않게 했습니다.
+- **미사용 Unity 모듈 참조 정리**: `PIURiseCustom.csproj`에서 실제로 쓰지 않는 `UnityEngine.IMGUIModule`·`UnityEngine.TextRenderingModule` 참조를 제거했습니다.
+- `SaveCustomConfig`의 `Mathf.Clamp`/`Mathf.Max`를 관리 코드 `Math.Clamp`/`MathF.Max`로 교체했습니다.
+
+### 성능
+- **노트 비주얼 핫패스 최적화**: 판정선 `WorldToScreenPoint` 투영 결과를 프레임·판정선 Y 기준으로 캐시해 노트당 카메라 투영 호출을 2회 → 1회로 절반 축소했습니다. 알파 값이 변하지 않은 노트는 `SpriteRenderer.color` setter를 건너뛰고, `NoteSway`+`NoteSpeedChaos` 동시 활성 시 `localPosition`·`position` 중복 읽기를 제거했습니다.
+- **오버레이 매 프레임 비용 절감**: 판정바 틱의 기본 색을 관리 쪽에 저장해 페이드 갱신 때 `Image.color` getter(IL2CPP 호출)를 없앴고, 키뷰어의 `GameInputManager` 키 테이블 4종은 스테이지당 1회만 조회해 매 프레임 `Il2CppStructArray` 래퍼 4개 할당을 제거했습니다.
+- **마라톤 배너 텍스트 캐시**: 결과창 배너 문자열이 실제로 바뀔 때만 `TextMeshProUGUI.text`를 갱신합니다.
+- **부팅 스캔 I/O 절감**: 차트 헤더 메타데이터를 읽을 때 거대한 BMS 전체 대신 앞 200줄(최대 32KB)만 읽는 `Util.ReadFirstLinesSmart`를 사용합니다. `FindBgm` 3순위 정렬의 중복 `FileInfo` 조회도 제거했습니다.
+
+### 문서
+- `README.md`에 `info.txt` 작성 예시와 `SaveCustomKey/config.txt` 주요 항목 표를 추가하고, 커스텀 곡 ID 고정(`song_ids.txt`) 설명 및 `docs/hooks.md` 버전을 최신화했습니다.
+
 ## [0.3.7] - 2026-11-24
 
 ### 제거

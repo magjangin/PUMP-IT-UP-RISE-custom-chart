@@ -433,15 +433,28 @@ namespace PIURiseCustom
             }
         }
 
-        // 7. 인게임 시작/종료 시 서버 플레이 로그 전송 차단 (오프라인 모드 또는 커스텀 곡에서 NullRef 방지)
+        // 7. 인게임 시작/종료 시 서버 플레이 로그 전송 차단 (오프라인 모드, 커스텀 곡, 또는 AutoPlay/AllPerfect 활성 시)
         [HarmonyPatch(typeof(Il2CppPIUUtil.CommonUtil), nameof(Il2CppPIUUtil.CommonUtil.SetPlayLogAtServer))]
         internal static class CommonUtil_SetPlayLogAtServer_Patch
         {
             private static bool Prefix(string songID)
             {
-                if (ModConfig.OfflineMode.Value || CustomPackManager.IsCatalogSongId(songID))
+                try
                 {
-                    Mod.Log.Msg($"[OfflineStub] CommonUtil.SetPlayLogAtServer({songID}) 차단");
+                    if (ModConfig.OfflineMode.Value)
+                    {
+                        Mod.Log.Msg($"[OfflineStub] CommonUtil.SetPlayLogAtServer({songID}) 차단");
+                        return false;
+                    }
+                    if (CustomPackManager.IsCatalogSongId(songID) || ShouldWithholdResult(out _))
+                    {
+                        Mod.Log.Warning($"[OnlineGuard] CommonUtil.SetPlayLogAtServer({songID}) 보류 (커스텀 곡 또는 AutoPlay/AllPerfect)");
+                        return false;
+                    }
+                }
+                catch
+                {
+                    // 판정 실패 시 안전하게 전송 보류
                     return false;
                 }
                 return true;

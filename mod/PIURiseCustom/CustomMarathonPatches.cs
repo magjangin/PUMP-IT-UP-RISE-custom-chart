@@ -26,6 +26,7 @@ namespace PIURiseCustom
         // uGUI 마라톤 배너 (IL2CPP에서 스트립된 OnGUI 미사용)
         private static GameObject _bannerCanvasObj;
         private static TextMeshProUGUI _bannerTmp;
+        private static string _lastBannerText;
 
         public static void OnCustomSongStarted(string songId)
         {
@@ -145,6 +146,7 @@ namespace PIURiseCustom
             }
             _bannerCanvasObj = null;
             _bannerTmp = null;
+            _lastBannerText = null;
         }
 
         private static void UpdateBannerUI()
@@ -206,7 +208,13 @@ namespace PIURiseCustom
                         timerStr = $" ({rem:0.0}s)";
                     }
 
-                    _bannerTmp.text = $"MARATHON {_playedIds.Count}/{CustomPackManager.CatalogSongs.Count} | Enter: Next{timerStr} | Esc: Stop";
+                    string text = $"MARATHON {_playedIds.Count}/{CustomPackManager.CatalogSongs.Count} | Enter: Next{timerStr} | Esc: Stop";
+                    // 텍스트가 바뀐 프레임에만 TMP에 대입해 매 프레임 문자열 재파싱·메쉬 재빌드를 피한다
+                    if (!string.Equals(text, _lastBannerText, StringComparison.Ordinal))
+                    {
+                        _lastBannerText = text;
+                        _bannerTmp.text = text;
+                    }
                 }
             }
             catch { }

@@ -1,6 +1,6 @@
 # PUMP IT UP RISE — 인수인계 문서 (AGENTS.md)
 
-> 작성 2026-11-22, 최신화 2026-11-24 (v0.3.6: 부팅 사전 JIT 점검, 커스텀 곡 ID 고정 표, config 줄 삭제 시 기본값 복귀 / v0.3.5: 클라우드 감사 PR #9 통합 — BMS 롱노트·토큰 버그, 온라인 결과 보류, config 부팅 전용 항목, 값 형식 반환 훅 제거 / v0.3.4: 마라톤 ESC 고착·프리뷰 핸들러 누적 수정, 오프라인 패치 실패 오류 승격, 매 프레임 경로 예외 격리). 버전별 변경은 [CHANGELOG.md](CHANGELOG.md). 단계별 진행 기록은 [PROGRESS.md](PROGRESS.md), 훅 전체 목록·업데이트 점검 절차는 [docs/hooks.md](docs/hooks.md).
+> 작성 2026-11-22, 최신화 2026-11-24 (v0.3.8: 전수 감사 — 관문 Prefix·UI Postfix 예외 격리 확대, 온라인 `SetPlayLogAtServer` AutoPlay/AllPerfect 보호, 노트 비주얼 판정선 투영·알파 캐시, 오버레이 틱 색·키 테이블 캐시, BMS 헤더 부분 읽기, 미사용 Unity 모듈 참조 제거 / v0.3.6: 부팅 사전 JIT 점검, 커스텀 곡 ID 고정 표, config 줄 삭제 시 기본값 복귀 / v0.3.5: 클라우드 감사 PR #9 통합 — BMS 롱노트·토큰 버그, 온라인 결과 보류, config 부팅 전용 항목, 값 형식 반환 훅 제거 / v0.3.4: 마라톤 ESC 고착·프리뷰 핸들러 누적 수정, 오프라인 패치 실패 오류 승격, 매 프레임 경로 예외 격리). 버전별 변경은 [CHANGELOG.md](CHANGELOG.md). 단계별 진행 기록은 [PROGRESS.md](PROGRESS.md), 훅 전체 목록·업데이트 점검 절차는 [docs/hooks.md](docs/hooks.md).
 > **확인** = 디스크·로그·의사코드로 직접 본 것, **추정** = 해석.
 
 ## 1. 게임 버전 및 고정 여부

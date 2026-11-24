@@ -2,7 +2,7 @@
 
 **PUMP IT UP RISE** (Steam / Unity 2022.3 IL2CPP)용 MelonLoader 기반 **커스텀 차트 · 미디어 주입 · 오프라인 모드** 통합 프로젝트입니다.
 
-- **현재 버전:** `v0.3.7`
+- **현재 버전:** `v0.3.8`
 - **제작자:** 화영왕 (`magjangin`)
 - **대상 게임:** PUMP IT UP RISE (Steam AppID `2756930`, Build `26399668` 기준 실기 검증)
 - **로더:** MelonLoader `0.7.3` (`net6.0` / IL2CPP)
@@ -12,7 +12,7 @@
 ## 주요 기능
 
 ### 1. 커스텀 곡 & `CUSTOM` 채널 자동 추가
-- 선곡 화면에 **`CUSTOM` 채널 탭**을 자동으로 추가하고, 게임 폴더 내 `hwa/` 디렉터리의 커스텀 곡을 독립 곡(곡 ID `990001`~, 폴더 경로 사전순)으로 주입합니다.
+- 선곡 화면에 **`CUSTOM` 채널 탭**을 자동으로 추가하고, 게임 폴더 내 `hwa/` 디렉터리의 커스텀 곡을 독립 곡(곡 ID `990001`~, `SaveCustomKey/song_ids.txt`에 폴더별로 고정 저장)으로 주입합니다.
 - `TAB` 키로 **5K / 6K** 전환, 로딩 커튼 자켓·난이도 표시, 결과 화면(`DANCE GRADE`) 진입까지 전 구간을 지원합니다.
 - `hwa/` 폴더에 곡을 추가·삭제한 내용은 **게임을 다시 시작하면** 반영됩니다. (이전 문서의 `F9`/`F10` 단축키는 구현된 적이 없어 삭제했습니다.)
 
@@ -75,6 +75,34 @@ Sixtar Gate: STARTRAIL / DEFLATE 통합 규격과 호환되는 설정 파일을 
          └─ ...
 ```
 
+### `info.txt` 작성 예시 (선택)
+
+차트 헤더(`#TITLE`, `#ARTIST`, `#BPM`, `#PLAYLEVEL`)가 있으면 자동으로 읽으며, `info.txt`가 있으면 최우선으로 덮어씁니다. UTF-8 / EUC-KR(CP949) / Shift-JIS를 자동 판별합니다.
+
+```text
+title: 곡 제목
+artist: 아티스트명
+bpm: 180
+level: 10, 15, 20
+double: 18, 22
+```
+
+### `SaveCustomKey/config.txt` 주요 설정
+
+저장하면 다음 곡(`MainStage` 진입)부터 자동 핫리로드됩니다. 줄을 지우면 기본값으로 돌아갑니다.
+
+| 항목 | 기본값 | 설명 |
+|---|---|---|
+| `OfflineMode` | `1` | 게임 서버 통신 차단 및 로컬 스텁 사용 (**재시작 필요**) |
+| `CustomEnabled` | `1` | 커스텀 곡·미디어 주입 활성화 (**재시작 필요**) |
+| `CustomChartOffsetMs` | `0` | 커스텀 차트 공통 싱크 오프셋(ms) |
+| `AutoPlay` / `AllPerfect` | `0` | 오토플레이 / 올퍼펙트 판정 (활성 시 온라인 결과 전송 보류) |
+| `BlockSave` | `1` | 로컬 클리어 기록 저장 차단 (옵션·키설정은 정상 저장) |
+| `MaxScore` | `1000000` | 결과 화면 점수 표시 기준치 |
+| `EnableJudgmentBar` / `EnableKeyViewer` | `1` | 실시간 판정바 / 5K·6K 키뷰어 오버레이 |
+| `NoteSway` / `NoteSpeedChaos` / `Sudden` / `Hidden` / `FadeIn` / `FadeOut` / `CustomNotes` | `0` | 노트 비주얼 모디파이어 (모두 꺼지면 매 노트 훅 자체를 해제) |
+| `CustomMarathon` / `CustomMarathonAutoNext` | `0` | 커스텀 곡 연속 마라톤 모드 및 자동 넘김 대기(초) |
+
 ---
 
 ## 소스 빌드 방법
@@ -130,7 +158,7 @@ dotnet build "mod/PIURiseCustom/PIURiseCustom.csproj" -c Release -p:GamePath="C:
 ```text
 .
 ├─ mod/
-│  ├─ PIURiseCustom/      # 통합 커스텀 차트 · 오프라인 주력 모드 (v0.3.7)
+│  ├─ PIURiseCustom/      # 통합 커스텀 차트 · 오프라인 주력 모드 (v0.3.8)
 │  └─ PIURiseSkeleton/    # 읽기 전용 판정 관찰용 최소 스켈레톤 모드 (PIURiseCustom과 함께 설치하지 말 것)
 ├─ docs/
 │  ├─ hooks.md            # 후킹 타깃, 전체 패치 목록, 업데이트 점검 절차
