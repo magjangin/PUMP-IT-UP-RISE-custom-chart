@@ -9,7 +9,7 @@
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <!-- 게임 경로. 다른 PC에서는 dotnet build -p:GamePath=... 로 덮어쓴다 -->
-    <GamePath Condition="'$(GamePath)' == ''">H:\steam\steamapps\common\PUMP IT UP RISE</GamePath>
+    <GamePath Condition="'$(GamePath)' == ''">H:\pump it up hwa</GamePath>
     <MLDir>$(GamePath)\MelonLoader</MLDir>
     <!-- dotnet build -p:Deploy=true 일 때만 게임 Mods\ 로 복사 -->
     <Deploy Condition="'$(Deploy)' == ''">false</Deploy>

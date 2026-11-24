@@ -5,7 +5,8 @@
 
 ## 1. 게임 버전 및 고정 여부
 - Steam appid 2756930, **buildid 26399668**, 게임 버전 1.6.0 (MelonLoader 로그), GameAssembly.dll 수정일 2025-11-05 (확인)
-- **고정 안 됨**: appmanifest_2756930.acf `AutoUpdateBehavior 0`(자동 업데이트). DepotDownloader 다운그레이드·.acf 패치 차단은 하지 않았다
+- **Steam 설치본은 고정 안 됨**: appmanifest_2756930.acf `AutoUpdateBehavior 0`(자동 업데이트). DepotDownloader 다운그레이드·.acf 패치 차단은 하지 않았다
+- **작업·플레이용 독립 사본 `H:\pump it up hwa` (2026-11-24~)**: Steam 설치본(`H:\steam\steamapps\common\PUMP IT UP RISE`, 1.6.0 / 26399668)을 robocopy로 통째로 복사한 것(18,450개, 39.43GB). Steam이 관리하지 않으므로 **업데이트되지 않아 사실상 1.6.0으로 고정**된다. `steam_appid.txt`(`2756930`)를 넣어 exe를 직접 실행해도 `SteamAPI_RestartAppIfNecessary`가 Steam 설치본으로 되돌리지 않는다(Steam 클라이언트는 켜져 있어야 함). 사본에는 appmanifest가 없어 `[Build] Steam buildid=(알 수 없음)`으로 나오는 것이 정상. 바탕화면 `게임들\PUMP IT UP RISE.exe - 바로 가기.lnk`가 사본 exe를 가리킨다. csproj 기본 `GamePath`도 사본(이후 빌드·배포·interop 참조 모두 사본 기준). Steam 설치본의 `Mods\`에는 v0.3.7 DLL이 남아 있다
 - 모드가 부팅 때 `[Build] Steam buildid=…, 게임 버전=…`를 로그에 남기고, 검증 빌드(26399668 / 1.6.0)와 다르면 경고한다 (`SafePatcher.LogGameBuildInfo`, 상수 `VerifiedSteamBuildId`/`VerifiedGameVersion`). 새 빌드에서 실기 검증을 마치면 이 상수와 이 절을 함께 갱신할 것
 - 업데이트 시 RVA(docs/hooks.md)는 전부 무효. Harmony 패치는 이름 기반이라 메서드 이름이 유지되면 동작, MelonLoader가 interop 자동 재생성
 
@@ -82,16 +83,17 @@
 - `F9`(ON/OFF)·`F10`(재스캔) 단축키는 문서에만 있었고 **구현된 적이 없다**(v0.3.1 감사에서 확인, 문서에서 삭제). F10을 구현하려면 단순 `CustomPackManager.Scan()`으로는 안 된다: 곡 ID가 스캔 순서로 다시 매겨져 이미 주입된 `songTable` 항목과 어긋나고, 새 곡은 `Mk2SongLoader.CacheSongTable`을 다시 돌리기 전엔 목록에 안 나온다
 - **Windows PowerShell 5.1 + `$ErrorActionPreference = "Stop"`에서 `git push` 실행** → git이 진행 메시지(`To https://…`)를 stderr로 쓰는 것만으로 `NativeCommandError`가 나 스크립트가 멈춘다(2026-11-23 v0.3.5 게시: 태그만 푸시되고 `gh release create` 전에 중단, 릴리즈는 수동 생성). `tools/release.ps1` 게시 단계는 `Continue`로 바꾸고 `$LASTEXITCODE`로만 판정한다. 같은 이유로 `Set-Content -Encoding UTF8`은 BOM을 붙이므로 노트는 BOM 없는 UTF-8로 쓴다
 - 컴퓨터 제어로 인게임 플레이를 검증하려 할 때 다른 Claude 세션이 화면 제어를 쥐고 있으면 `request_access`가 거부된다 → 로그 기반 부팅 검증 + 오프라인 재현 스크립트로 대체했음
+- **독립 사본(`H:\pump it up hwa`)을 Steam 클라이언트가 꺼진 상태에서 실행** → `Scene loaded: [0] PIUGame` 약 1초 뒤 `Preferences Saved!`로 조용히 종료된다(2026-11-24 14:18 실기 2회: Steam이 14:17:57~14:18:05에 종료된 뒤). 모드는 정상 로드(60/60)됐고 `CheckTicket` 전에 꺼지며 Player.log에도 오류가 없다. `steam_appid.txt`는 `SteamAPI_RestartAppIfNecessary`만 피할 뿐 `SteamAPI_Init`에는 Steam 클라이언트가 필요하다(**추정**: 게임 `SteamManager`가 Init 실패 시 종료). 같은 사본이 Steam이 켜져 있던 14:14·14:17에는 선곡까지 정상. **Steam을 먼저 켜고 실행할 것**
 
 ## 6. 빌드 명령 및 Mods/ 배포 경로
 - **통합 커스텀·오프라인 모드 (`PIURiseCustom`, 주력)**:
 ```powershell
 dotnet build "H:\source\repos\PUMP IT UP RISE-unity-il2cpp\mod\PIURiseCustom\PIURiseCustom.csproj" -c Release -p:Deploy=true
 ```
-  - 산출물: `mod\PIURiseCustom\bin\Release\PIURiseCustom.dll` → 배포: `H:\steam\steamapps\common\PUMP IT UP RISE\Mods\`
+  - 산출물: `mod\PIURiseCustom\bin\Release\PIURiseCustom.dll` → 배포: `H:\pump it up hwa\Mods\` (독립 사본, §1)
   - interop가 없으면(게임 업데이트 직후 등) 빌드가 `CheckGameReferences` 타깃에서 원인 메시지와 함께 즉시 실패한다 → 게임을 1회 실행해 재생성 후 재빌드
-  - 커스텀 곡 폴더: `H:\steam\steamapps\common\PUMP IT UP RISE\hwa\` (DEFLATE/STARGAZER 표준 `hwa/<곡>/` 또는 `hwa/<앨범>/<곡>/` 규격, `info.txt`, `*.ucs`/`*.bms`, `music.ogg`/`*.mp3`, `video.mp4`/`*.webm`, `Thumbnail.png`/`cover.png`). 폴더 변경은 게임 재시작 시 반영
-  - 설정 파일: `H:\steam\steamapps\common\PUMP IT UP RISE\SaveCustomKey\config.txt` (Sixtar Gate `SaveCustomKey/config.txt` 전 항목 호환, `MainStage.Start` 시 자동 핫리로드: `AutoPlay`, `AllPerfect`, `BlockSave`, `MaxScore`, 판정바, 키뷰어, 노트 흔들림, 속도 카오스, `CustomNotes/`, 서든/히든, 페이드 인/아웃, 커스텀 마라톤, `LaneCoverDebug`)
+  - 커스텀 곡 폴더: `H:\pump it up hwa\hwa\` (DEFLATE/STARGAZER 표준 `hwa/<곡>/` 또는 `hwa/<앨범>/<곡>/` 규격, `info.txt`, `*.ucs`/`*.bms`, `music.ogg`/`*.mp3`, `video.mp4`/`*.webm`, `Thumbnail.png`/`cover.png`). 폴더 변경은 게임 재시작 시 반영
+  - 설정 파일: `H:\pump it up hwa\SaveCustomKey\config.txt` (Sixtar Gate `SaveCustomKey/config.txt` 전 항목 호환, `MainStage.Start` 시 자동 핫리로드: `AutoPlay`, `AllPerfect`, `BlockSave`, `MaxScore`, 판정바, 키뷰어, 노트 흔들림, 속도 카오스, `CustomNotes/`, 서든/히든, 페이드 인/아웃, 커스텀 마라톤, `LaneCoverDebug`)
   - 선곡 화면 `CUSTOM` 채널 탭 자동 추가
 - **읽기 전용 스켈레톤 (`PIURiseSkeleton`)**:
 ```powershell
@@ -99,7 +101,7 @@ dotnet build "H:\source\repos\PUMP IT UP RISE-unity-il2cpp\mod\PIURiseSkeleton\P
 ```
   - PIURiseCustom과 같은 훅을 중복으로 걸므로 Mods\에 함께 두지 않는다
 - **릴리즈 (v0.3.5부터, `tools/release.ps1`, 게임 설치 PC에서 실행)**: `Mod.cs`의 `Version`과 `CHANGELOG.md` 최상단 `## [버전]`을 같이 올려 main에 머지한 뒤 `.\tools\release.ps1`(버전 일치 확인 → Release 빌드 `-warnaserror` → `dist\PIURiseCustom-v<버전>.zip` + SHA256 + 노트 초안) → `.\tools\release.ps1 -Publish`(main·깨끗한 트리·origin/main 일치 확인 → 태그 푸시 → `gh release create`). 같은 태그가 있으면 중단. zip에는 DLL·CHANGELOG.md·README.md를 넣는다(v0.3.3~ 릴리즈와 같은 구성). `-Publish`는 `local` 원격이 있으면 main·태그도 함께 푸시한다. 빌드에 interop DLL이 필요해 클라우드·CI에서는 못 한다
-- 실행: `steam://rungameid/2756930` (exe 직접 실행 시 `SteamAPI_RestartAppIfNecessary`로 종료됨), 로그: `<게임>\MelonLoader\Latest.log`
+- 실행: 독립 사본은 `H:\pump it up hwa\PUMP IT UP RISE.exe` 직접 실행(`steam_appid.txt` 덕분에 Steam 설치본으로 되돌아가지 않음, Steam 클라이언트는 켜 둘 것). Steam 설치본은 `steam://rungameid/2756930` (steam_appid.txt 없이 exe 직접 실행 시 `SteamAPI_RestartAppIfNecessary`로 종료됨), 로그: `<게임>\MelonLoader\Latest.log`
 - 부팅 정상 판정 로그: `[Build] …`, `[Patch] Harmony 패치 60/60개 적용 완료`(v0.3.5~, v0.3.3~v0.3.4는 61), `[Patch] 사전 JIT 점검 통과 — 메서드 N개`(v0.3.6~), `PIURiseCustom v0.3.6 loaded`, `[OfflineStub] SteamManager.CheckTicket 가로챔`. 비주얼 기능을 켠 상태로 곡에 들어가면 `[NoteVisual] … LateUpdate 훅을 붙였습니다`
 
 ## 6-1. 오프라인 버전 구현 (`OfflineStubPatches.cs`)
