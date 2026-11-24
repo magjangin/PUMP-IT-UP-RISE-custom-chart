@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.10] - 2026-11-24
+
+### 성능 (BMS 파싱 · BGM · BGA 로딩)
+- **선곡 미리듣기를 FMOD 스트림으로 연다**: 게임의 `AudioManager.LoadMusic`은 `MusicPlayer.Load(p, CREATESAMPLE|OPENMEMORY)`라 곡 전체를 PCM으로 미리 풀었고, 미리듣기 파일이 따로 없는 커스텀 곡은 커서를 올릴 때마다 본곡 전체를 디코딩했다. 미리듣기만 `CREATESTREAM|OPENMEMORY`로 열어 FMOD 열기가 약 305ms → 약 1ms(실기). 본게임 BGM은 판정 싱크를 위해 게임 기본값 그대로. MelonPreferences `PreviewAudioStream=false`로 예전 방식 복귀 가능.
+- **차트 파싱을 두 단계로 분리**: 파일 → 행 블록(`ChartModel`, 순수 관리 코드)과 행 블록 → Il2Cpp `Step_t`(`CustomChartParsers.BuildStep`, 메인 스레드). 선곡 커서가 곡에 올라가면 관리 파싱을 백그라운드에서 미리 돌리고 (경로·크기·수정 시각·오프셋) 키로 캐시해, 본게임 로딩 때는 Il2Cpp 구성(실곡 1.1~3.8ms)만 한다. 파서 로그는 모았다가 메인 스레드에서 출력.
+- **BMS 관리 파싱 정리**: 빈 토큰은 문자열을 만들지 않고, 노트 박 위치는 한 번만 계산해 정렬·분할 선택·행 배치에 재사용, 빈 행은 문자열 하나를 공유. 92KB 무작위 차트 45ms → 22ms. 예전 파서와 결과가 102건(실곡·경계 사례·무작위 26개 × 옵션 3종) 모두 동일함을 오프라인 비교로 확인.
+- **노트 객체 필드 쓰기 3회 → 1회**: `Note.dw`(mAttr·mVisualEffect·mBank_Param 공용체)에 한 번에 쓴다.
+- **오디오 미리 읽기·Il2Cpp 배열 캐시**: 선곡 커서가 곡에 올라가면 오디오 파일을 백그라운드에서 읽고, 게임에 넘기는 Il2Cpp byte[]까지 캐시해 같은 곡을 다시 불러도 수 MB 할당·복사를 하지 않는다(FMOD는 OPENMEMORY 데이터를 복사하므로 재사용 안전).
+- **BGA**: 파일 URL 캐시, 미리듣기 영상이 이미 같은 URL로 준비돼 있으면 Prepare 생략.
+- **구간별 소요 시간 로그**: `[ChartPerf]`, `[CustomBGM] … FMOD 열기(스트림/전체 디코딩) Nms`, `[PreviewBGA]/[CustomBGA] 준비 완료 (Nms)`.
+
 ## [0.3.9] - 2026-11-24
 
 ### 기능·오프라인 보존 (Steam DRM 우회 & 공식 DLC 11종 전면 해금)

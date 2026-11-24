@@ -12,7 +12,7 @@ namespace PIURiseCustom
 {
     public class Mod : MelonMod
     {
-        public const string Version = "0.3.9";
+        public const string Version = "0.3.10";
 
         internal static MelonLogger.Instance Log;
         internal static HarmonyLib.Harmony PatchHarmony;

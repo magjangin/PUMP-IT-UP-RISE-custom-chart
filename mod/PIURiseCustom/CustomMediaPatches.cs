@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading.Tasks;
 using HarmonyLib;
 using Il2Cpp;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
@@ -40,25 +41,26 @@ namespace PIURiseCustom
 
         private static string GetCurrentSongId() => Util.CurrentSongId();
 
-        // ===== 오디오 바이트 캐시 (최근 2개) =====
+        // ===== 오디오 캐시 (최근 2개) =====
         // 선곡 화면에서 곡을 오갈 때마다, 그리고 프리뷰 → 본게임 진입 때 같은 music.ogg를 메인 스레드에서 다시 통째로 읽어
         // 커서 이동이 끊기던 문제를 줄인다. 파일 크기·수정 시각이 바뀌면 다시 읽는다.
+        // v0.3.10: (1) 커서가 곡에 올라가면 파일을 백그라운드 스레드에서 미리 읽는다(PrefetchAudio).
+        //          (2) 게임에 넘기는 Il2Cpp byte[]까지 캐시해, 같은 곡을 다시 불러도 수 MB 배열 할당·복사를 하지 않는다.
+        //              FMOD는 OPENMEMORY로 받은 데이터를 자기 버퍼로 복사하므로 같은 배열을 다시 넘겨도 안전하다.
+        //          Il2Cpp 배열은 메인 스레드에서만 만든다. 만든 뒤에는 관리 쪽 byte[]는 놓아 메모리를 두 번 들고 있지 않는다.
         private const long AudioCacheMaxBytes = 64L * 1024 * 1024;
         private sealed class AudioCacheEntry
         {
             public string Path;
             public long Length;
             public DateTime WriteUtc;
-            public byte[] Bytes;
+            public Task<byte[]> Read;                // 미리 읽기 작업 (Il2Cpp 배열을 만든 뒤에는 null)
+            public Il2CppStructArray<byte> IlBytes;  // 메인 스레드에서 만든 게임 전달용 배열
         }
         private static readonly AudioCacheEntry[] _audioCache = new AudioCacheEntry[2];
 
-        private static byte[] ReadAudioBytesCached(string path)
+        private static AudioCacheEntry FindAudioEntry(string path, long len, DateTime writeUtc)
         {
-            var fi = new FileInfo(path);
-            long len = fi.Length;
-            DateTime writeUtc = fi.LastWriteTimeUtc;
-
             for (int i = 0; i < _audioCache.Length; i++)
             {
                 var e = _audioCache[i];
@@ -66,17 +68,109 @@ namespace PIURiseCustom
                     string.Equals(e.Path, path, StringComparison.OrdinalIgnoreCase))
                 {
                     if (i != 0) { _audioCache[i] = _audioCache[0]; _audioCache[0] = e; } // MRU 앞으로
-                    return e.Bytes;
+                    return e;
                 }
             }
+            return null;
+        }
 
-            byte[] bytes = File.ReadAllBytes(path);
+        private static AudioCacheEntry AddAudioEntry(string path, long len, DateTime writeUtc)
+        {
+            var e = new AudioCacheEntry { Path = path, Length = len, WriteUtc = writeUtc };
+            _audioCache[1] = _audioCache[0];
+            _audioCache[0] = e;
+            return e;
+        }
+
+        /// <summary>선곡 커서가 곡에 올라갔을 때: 오디오 파일을 백그라운드에서 읽어 둔다(메인 스레드에서 호출).</summary>
+        internal static void PrefetchAudio(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+                return;
+            try
+            {
+                var fi = new FileInfo(path);
+                if (!fi.Exists || fi.Length > AudioCacheMaxBytes)
+                    return;
+                if (FindAudioEntry(path, fi.Length, fi.LastWriteTimeUtc) != null)
+                    return;
+                var e = AddAudioEntry(path, fi.Length, fi.LastWriteTimeUtc);
+                e.Read = Task.Run(() => File.ReadAllBytes(path));
+            }
+            catch { }
+        }
+
+        /// <summary>게임에 넘길 Il2Cpp 오디오 배열을 돌려준다(메인 스레드 전용). source는 성능 로그용 설명.</summary>
+        private static Il2CppStructArray<byte> GetAudioIl2Cpp(string path, out string source)
+        {
+            var fi = new FileInfo(path);
+            long len = fi.Length;
+            DateTime writeUtc = fi.LastWriteTimeUtc;
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+
+            var e = FindAudioEntry(path, len, writeUtc);
+            if (e?.IlBytes != null)
+            {
+                source = "Il2Cpp 배열 캐시";
+                return e.IlBytes;
+            }
+
+            byte[] bytes = null;
+            string how = "디스크에서 바로 읽음";
+            if (e?.Read != null)
+            {
+                bool done = e.Read.IsCompleted;
+                try
+                {
+                    bytes = e.Read.GetAwaiter().GetResult();
+                    how = done ? "미리 읽어 둔 바이트" : "미리 읽기 완료 대기";
+                }
+                catch { bytes = null; } // 미리 읽기가 실패했으면 아래에서 직접 읽는다
+            }
+            if (bytes == null)
+                bytes = File.ReadAllBytes(path);
+            double readMs = sw.Elapsed.TotalMilliseconds;
+
+            sw.Restart();
+            var il = new Il2CppStructArray<byte>(bytes);
+            double copyMs = sw.Elapsed.TotalMilliseconds;
+
             if (bytes.LongLength <= AudioCacheMaxBytes)
             {
-                _audioCache[1] = _audioCache[0];
-                _audioCache[0] = new AudioCacheEntry { Path = path, Length = len, WriteUtc = writeUtc, Bytes = bytes };
+                e ??= AddAudioEntry(path, len, writeUtc);
+                e.IlBytes = il;
+                e.Read = null; // 관리 쪽 사본은 놓는다
             }
-            return bytes;
+
+            source = $"{how} {readMs:0.0}ms + Il2Cpp 복사 {copyMs:0.0}ms ({bytes.LongLength / 1024} KB)";
+            return il;
+        }
+
+        // ===== BGA 파일 URL 캐시 =====
+        private static readonly System.Collections.Generic.Dictionary<string, string> _fileUrlCache = new(StringComparer.OrdinalIgnoreCase);
+
+        private static string FileUrl(string path)
+        {
+            if (!_fileUrlCache.TryGetValue(path, out string url))
+            {
+                url = new Uri(Path.GetFullPath(path)).AbsoluteUri;
+                _fileUrlCache[path] = url;
+            }
+            return url;
+        }
+
+        /// <summary>
+        /// 선곡 커서가 커스텀 곡에 올라갔을 때 부른다: 오디오 파일과 차트를 백그라운드에서 미리 읽어 둬
+        /// 미리듣기·본게임 로딩 때 메인 스레드가 디스크 읽기·파싱을 기다리지 않게 한다.
+        /// </summary>
+        internal static void PrefetchPack(CustomPack pack)
+        {
+            if (pack == null)
+                return;
+            if (ModConfig.OverridePreviewAudio.Value)
+                PrefetchAudio(pack.PreviewBgmPath ?? pack.BgmPath);
+            if (!string.IsNullOrEmpty(pack.ChartPath))
+                CustomChartParsers.Prefetch(pack.ChartPath, ModConfig.CustomChartOffsetMs.Value);
         }
 
         private static string GetCurrentPlayType()
@@ -212,11 +306,27 @@ namespace PIURiseCustom
                     if (string.IsNullOrEmpty(audioPath))
                         return true;
 
-                    Mod.Log.Msg($"[CustomBGM] '{pack.Title}' 오디오 주입: {Path.GetFileName(audioPath)} (prefix={prefix}, song={name})");
-                    byte[] rawBytes = ReadAudioBytesCached(audioPath);
-                    var ilBytes = new Il2CppStructArray<byte>(rawBytes);
+                    var ilBytes = GetAudioIl2Cpp(audioPath, out string source);
 
-                    __instance.LoadMusic(ilBytes);
+                    // AudioManager.LoadMusic(p)는 MusicPlayer.Load(p, CREATESAMPLE|OPENMEMORY)와 같다(ISIL 확인).
+                    // CREATESAMPLE은 곡 전체를 PCM으로 미리 풀어 수백 ms가 걸린다. 본게임은 로딩 화면 뒤라 괜찮고 판정 싱크도 공식 곡과
+                    // 같아야 하므로 그대로 두고, 미리듣기만 스트림으로 연다(곡에 커서를 올릴 때마다 전체 디코딩하던 끊김 제거).
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
+                    string mode;
+                    var mp = isPreview && ModConfig.PreviewAudioStream.Value ? __instance.MusicPlayer : null;
+                    if (mp != null)
+                    {
+                        mp.Load(ilBytes, Il2CppFMOD.MODE.CREATESTREAM | Il2CppFMOD.MODE.OPENMEMORY);
+                        mode = "스트림";
+                    }
+                    else
+                    {
+                        __instance.LoadMusic(ilBytes);
+                        mode = "전체 디코딩";
+                    }
+                    double fmodMs = sw.Elapsed.TotalMilliseconds;
+
+                    Mod.Log.Msg($"[CustomBGM] '{pack.Title}' 오디오 주입: {Path.GetFileName(audioPath)} (prefix={prefix}, song={name}) — {source}, FMOD 열기({mode}) {fmodMs:0.0}ms");
                     callback?.Invoke();
                     return false;
                 }
@@ -277,7 +387,8 @@ namespace PIURiseCustom
                     }
 
                     __instance.NeedCommonBGA = false;
-                    string fileUrl = new Uri(Path.GetFullPath(pack.BgaPath)).AbsoluteUri;
+                    string fileUrl = FileUrl(pack.BgaPath);
+                    var prepareWatch = System.Diagnostics.Stopwatch.StartNew();
                     vp.source = VideoSource.Url;
                     vp.url = fileUrl;
                     // MP4 자체 오디오 트랙을 꺼서 FMOD BGM(music.ogg)과 소리가 겹치지 않도록 차단
@@ -299,7 +410,7 @@ namespace PIURiseCustom
                         {
                             if (handled) return;
                             handled = true;
-                            Mod.Log.Msg("[CustomBGA] VideoPlayer 준비 완료");
+                            Mod.Log.Msg($"[CustomBGA] VideoPlayer 준비 완료 ({prepareWatch.Elapsed.TotalMilliseconds:0}ms)");
                             __instance.OnBGAPrepared(s);
                         }));
                     vp.add_errorReceived(onError);
@@ -376,7 +487,21 @@ namespace PIURiseCustom
                         return true;
                     }
 
-                    string fileUrl = new Uri(Path.GetFullPath(pack.BgaPath)).AbsoluteUri;
+                    string fileUrl = FileUrl(pack.BgaPath);
+
+                    // 같은 영상이 이미 준비된 상태로 남아 있으면(같은 곡으로 다시 돌아옴 등) Stop → Prepare로 디코더를 다시 열지 않는다
+                    if (vp.source == VideoSource.Url && vp.isPrepared &&
+                        string.Equals(vp.url, fileUrl, StringComparison.Ordinal))
+                    {
+                        vp.isLooping = true;
+                        vp.audioOutputMode = VideoAudioOutputMode.None;
+                        __instance._isVideoLoaded = true;
+                        if (!vp.isPlaying) vp.Play();
+                        Mod.Log.Msg($"[PreviewBGA] '{pack.Title}' 이미 준비된 프리뷰 영상 재사용 (Prepare 생략)");
+                        return false;
+                    }
+
+                    var prepareWatch = System.Diagnostics.Stopwatch.StartNew();
                     vp.Stop();
                     vp.source = VideoSource.Url;
                     vp.url = fileUrl;
@@ -393,6 +518,7 @@ namespace PIURiseCustom
                             if (handled) return;
                             handled = true;
                             __instance._isVideoLoaded = true;
+                            Mod.Log.Msg($"[PreviewBGA] 프리뷰 영상 준비 완료 ({prepareWatch.Elapsed.TotalMilliseconds:0}ms)");
                             try { s.Play(); } catch { }
                         }));
                     vp.add_prepareCompleted(onPrepared);
@@ -423,7 +549,13 @@ namespace PIURiseCustom
                         return;
 
                     var pack = CustomPackManager.ResolveBySongId(Util.SongId(content.Song));
-                    if (pack == null || string.IsNullOrEmpty(pack.JacketPath))
+                    if (pack == null)
+                        return;
+
+                    // 커서가 커스텀 곡에 올라온 순간 오디오·차트를 백그라운드에서 미리 읽기 시작한다
+                    PrefetchPack(pack);
+
+                    if (string.IsNullOrEmpty(pack.JacketPath))
                         return;
 
                     var sprite = SongTableInjectorPatches.LoadOrGetJacket(pack.JacketPath);
