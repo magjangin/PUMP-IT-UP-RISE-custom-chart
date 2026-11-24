@@ -1,12 +1,21 @@
 # PUMP IT UP RISE — 인수인계 문서 (AGENTS.md)
 
-> 작성 2026-11-22, 최신화 2026-11-24 (v0.3.8: 전수 감사 — 관문 Prefix·UI Postfix 예외 격리 확대, 온라인 `SetPlayLogAtServer` AutoPlay/AllPerfect 보호, 노트 비주얼 판정선 투영·알파 캐시, 오버레이 틱 색·키 테이블 캐시, BMS 헤더 부분 읽기, 미사용 Unity 모듈 참조 제거 / v0.3.6: 부팅 사전 JIT 점검, 커스텀 곡 ID 고정 표, config 줄 삭제 시 기본값 복귀 / v0.3.5: 클라우드 감사 PR #9 통합 — BMS 롱노트·토큰 버그, 온라인 결과 보류, config 부팅 전용 항목, 값 형식 반환 훅 제거 / v0.3.4: 마라톤 ESC 고착·프리뷰 핸들러 누적 수정, 오프라인 패치 실패 오류 승격, 매 프레임 경로 예외 격리). 버전별 변경은 [CHANGELOG.md](CHANGELOG.md). 단계별 진행 기록은 [PROGRESS.md](PROGRESS.md), 훅 전체 목록·업데이트 점검 절차는 [docs/hooks.md](docs/hooks.md).
+> 작성 2026-11-22, 최신화 2026-11-24 (v0.3.9: 로컬 Steam API 후킹 & 11개 공식 DLC 전면 해금 — Goldberg 대신 원본 DLL 복원 후 C# 모드 레벨에서 `IsUseSteam=false` 주입으로 `SteamAPI_RestartAppIfNecessary`/`SteamClient.Init` 원천 우회 및 Steam 클라이언트 미실행 독립 구동, `CheckAllDLCStatus`/`IsDLCInstalled` 후킹으로 11종 DLC 자동 소유 처리 / v0.3.8: 전수 감사 — 관문 Prefix·UI Postfix 예외 격리 확대, 온라인 `SetPlayLogAtServer` AutoPlay/AllPerfect 보호, 노트 비주얼 판정선 투영·알파 캐시, 오버레이 틱 색·키 테이블 캐시, BMS 헤더 부분 읽기, 미사용 Unity 모듈 참조 제거 / v0.3.6: 부팅 사전 JIT 점검, 커스텀 곡 ID 고정 표, config 줄 삭제 시 기본값 복귀 / v0.3.5: 클라우드 감사 PR #9 통합 — BMS 롱노트·토큰 버그, 온라인 결과 보류, config 부팅 전용 항목, 값 형식 반환 훅 제거 / v0.3.4: 마라톤 ESC 고착·프리뷰 핸들러 누적 수정, 오프라인 패치 실패 오류 승격, 매 프레임 경로 예외 격리). 버전별 변경은 [CHANGELOG.md](CHANGELOG.md). 단계별 진행 기록은 [PROGRESS.md](PROGRESS.md), 훅 전체 목록·업데이트 점검 절차는 [docs/hooks.md](docs/hooks.md).
 > **확인** = 디스크·로그·의사코드로 직접 본 것, **추정** = 해석.
 
 ## 1. 게임 버전 및 고정 여부
 - Steam appid 2756930, **buildid 26399668**, 게임 버전 1.6.0 (MelonLoader 로그), GameAssembly.dll 수정일 2025-11-05 (확인)
 - **Steam 설치본은 고정 안 됨**: appmanifest_2756930.acf `AutoUpdateBehavior 0`(자동 업데이트). DepotDownloader 다운그레이드·.acf 패치 차단은 하지 않았다
-- **작업·플레이용 독립 사본 `H:\pump it up hwa` (2026-11-24~)**: Steam 설치본(`H:\steam\steamapps\common\PUMP IT UP RISE`, 1.6.0 / 26399668)을 robocopy로 통째로 복사한 것(18,450개, 39.43GB). Steam이 관리하지 않으므로 **업데이트되지 않아 사실상 1.6.0으로 고정**된다. `steam_appid.txt`(`2756930`)를 넣어 exe를 직접 실행해도 `SteamAPI_RestartAppIfNecessary`가 Steam 설치본으로 되돌리지 않는다(Steam 클라이언트는 켜져 있어야 함). 사본에는 appmanifest가 없어 `[Build] Steam buildid=(알 수 없음)`으로 나오는 것이 정상. 바탕화면 `게임들\PUMP IT UP RISE.exe - 바로 가기.lnk`가 사본 exe를 가리킨다. csproj 기본 `GamePath`도 사본(이후 빌드·배포·interop 참조 모두 사본 기준). Steam 설치본의 `Mods\`에는 v0.3.7 DLL이 남아 있다
+- **작업·플레이용 독립 사본 `H:\pump it up hwa` (2026-11-24~)**: Steam 설치본(`H:\steam\steamapps\common\PUMP IT UP RISE`, 1.6.0 / 26399668)을 robocopy로 통째로 복사한 것(18,450개, 39.43GB). Steam이 관리하지 않으므로 **업데이트되지 않아 사실상 1.6.0으로 고정**된다.
+- **스팀리스(Steamless) 검증 및 순수 C# 모드 레벨 Steam/DLC 완전 우회 (2026-11-24, 옵션 A 적용)**:
+  - **Steamless (SteamStub DRM 검증)**: `PUMP IT UP RISE.exe`의 PE 섹션 분석 결과(`.text`, `.rdata`, `.data`, `.pdata`, `_RDATA`, `.rsrc`, `.reloc`), SteamStub 패킹 섹션(`.bind`, `.steam`)이 전혀 없는 순수 Unity x64 바이너리임(Steamless 언패킹 불필요, 이미 DRM-free).
+  - **Goldberg 시도 및 전환 사유**: Goldberg Emulator(`steam_api64.dll`) 교체 시 게임 내 `Facepunch.Steamworks.SteamClient.Init`에서 초기화 불일치로 부팅 직후 `Application.Quit`이 트리거됨. 이에 따라 불안정한 외부 DLL 교체 대신 원본 `steam_api64.dll`을 복원하고, **모드 내부에서 Steam 종속성을 100% 가로채는 로컬 Steam Hooking(옵션 A)**으로 전환함.
+  - **모드 레벨 Steam 우회 & DLC 해금 (`OfflineStubPatches`)**:
+    - `SteamManager.InitManager` Prefix: 오프라인 모드일 때 `__instance.IsUseSteam = false`로 강제 설정하여, 내부의 `SteamAPI_RestartAppIfNecessary(Application.Quit)` 및 `SteamClient.Init`을 원천적으로 건너뛰고 바로 `PlayerData.StartLoad` 및 `CheckTicket`으로 직행. Steam 클라이언트 실행 여부와 무관하게 완전 독립 구동.
+    - `SteamManager.CheckUseSteam` / `GetIsUseSteam` Prefix: 오프라인 상태일 때 `false` 반환.
+    - `SteamManager.CheckAllDLCStatus` Prefix: Steamworks API 호출 없이 11개 공식 DLC AppID(5344930 EZ2ON, 3932570 REMIX, 4445930 VOL.2, 4528900 PHOENIX 2023, 4744660 PHOENIX 2024, 4446060/5344920 RHYTHM PASS S1/S2, OST 4종)를 `dlcOwnedList`에 직접 등록.
+    - `SteamManager.IsDLCInstalled` Prefix: 항상 `true` 반환하여 게임 내 모든 DLC 소유 처리.
+  - `H:\pump it up hwa` 사본 및 `H:\steam\steamapps\common\PUMP IT UP RISE` 양쪽 모두 원본 DLL 복원 및 모드 배포 완료. 사본에는 appmanifest가 없어 `[Build] Steam buildid=(알 수 없음)`으로 나오는 것이 정상. 바탕화면 `게임들\PUMP IT UP RISE.exe - 바로 가기.lnk`가 사본 exe를 가리킨다.
 - 모드가 부팅 때 `[Build] Steam buildid=…, 게임 버전=…`를 로그에 남기고, 검증 빌드(26399668 / 1.6.0)와 다르면 경고한다 (`SafePatcher.LogGameBuildInfo`, 상수 `VerifiedSteamBuildId`/`VerifiedGameVersion`). 새 빌드에서 실기 검증을 마치면 이 상수와 이 절을 함께 갱신할 것
 - 업데이트 시 RVA(docs/hooks.md)는 전부 무효. Harmony 패치는 이름 기반이라 메서드 이름이 유지되면 동작, MelonLoader가 interop 자동 재생성
 
@@ -49,7 +58,7 @@
 - 커스텀 곡 ID는 `990001`부터 부여한다(README 구버전의 `HWA_0001` 표기는 오기). v0.3.5까지는 스캔마다 경로 사전순으로 다시 매겨 폴더를 추가·삭제하면 뒤쪽 ID가 밀렸고, v0.3.6부터는 `song_ids.txt`로 고정된다(위 항목)
 
 ## 4. 핵심 훅 시그니처와 주입 파이프라인
-- 주입: version.dll(MelonLoader) → Mods\PIURiseCustom.dll → `OnInitializeMelon`에서 `SafePatcher.ApplyAll(HarmonyInstance)` (v0.3.5 기준 **60개 패치 클래스**, v0.3.3~v0.3.4는 61개 + 노트 비주얼 `LateUpdate` 훅 2개는 기능이 켜졌을 때만 `MainStage.Start`에서 동적 부착. v0.3.2 63/63 실기 부팅 확인 2026-11-23 17:13)
+- 주입: version.dll(MelonLoader) → Mods\PIURiseCustom.dll → `OnInitializeMelon`에서 `SafePatcher.ApplyAll(HarmonyInstance)` (v0.3.9 기준 **65개 패치 클래스**, v0.3.5~v0.3.8은 60개, v0.3.3~v0.3.4는 61개 + 노트 비주얼 `LateUpdate` 훅 2개는 기능이 켜졌을 때만 `MainStage.Start`에서 동적 부착. v0.3.2 63/63 실기 부팅 확인 2026-11-23 17:13)
 - interop 네임스페이스: 전역 타입 `Il2Cpp.MainStage`, 네임스페이스 타입 `Il2CppPIUMobileStepDLL.PUMPPlayer` (확인)
 - 커스텀 곡 파이프라인 요약 (전체 표는 docs/hooks.md §4):
   1. `Mk2SongLoader.CacheSongTable/CacheArcadeSongTable` Prefix → `PIUDataBase.songTable`에 `Song` 주입

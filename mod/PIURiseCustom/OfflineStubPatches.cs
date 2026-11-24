@@ -200,6 +200,100 @@ namespace PIURiseCustom
                 Mod.Log.Warning($"[OfflineStub] 응답 형식 미확인 명령 {cmd} → 빈 객체 {{}} 반환 (이 명령 직후 화면이 이상하면 응답 캡처 필요)");
         }
 
+        // 0-1. 부팅 관문: SteamManager.InitManager(Action callback)
+        // 오프라인 모드일 때 IsUseSteam을 false로 설정하여
+        // SteamAPI_RestartAppIfNecessary(Application.Quit) 및 Steamworks.SteamClient.Init을 원천 건너뛰고
+        // Steam 클라이언트 미실행 상태에서도 정상 부팅되도록 보장한다.
+        [HarmonyPatch(typeof(SteamManager), nameof(SteamManager.InitManager))]
+        internal static class SteamManager_InitManager_Patch
+        {
+            private static void Prefix(SteamManager __instance)
+            {
+                if (!ModConfig.OfflineMode.Value || __instance == null)
+                    return;
+
+                try
+                {
+                    __instance.IsUseSteam = false;
+                    Mod.Log.Msg("[OfflineStub] SteamManager.InitManager: IsUseSteam = false 설정 (Steam 재시작/인증 의존성 원천 우회)");
+                }
+                catch (Exception ex)
+                {
+                    Mod.Log.Error($"[OfflineStub] InitManager Prefix 예외: {ex}");
+                }
+            }
+        }
+
+        // 0-2. 스팀 사용 여부 질의 우회
+        [HarmonyPatch(typeof(SteamManager), nameof(SteamManager.CheckUseSteam))]
+        internal static class SteamManager_CheckUseSteam_Patch
+        {
+            private static bool Prefix(ref bool __result)
+            {
+                if (!ModConfig.OfflineMode.Value)
+                    return true;
+                __result = false;
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(SteamManager), nameof(SteamManager.GetIsUseSteam))]
+        internal static class SteamManager_GetIsUseSteam_Patch
+        {
+            private static bool Prefix(ref bool __result)
+            {
+                if (!ModConfig.OfflineMode.Value)
+                    return true;
+                __result = false;
+                return false;
+            }
+        }
+
+        // 0-3. DLC 상태 전수 등록 (Steamworks API 없이 11개 공식 DLC 직접 등록)
+        [HarmonyPatch(typeof(SteamManager), nameof(SteamManager.CheckAllDLCStatus))]
+        internal static class SteamManager_CheckAllDLCStatus_Patch
+        {
+            private static readonly uint[] _allDlcs = {
+                5344930, 3932570, 4445930, 4448630, 4448870,
+                4528900, 4744660, 4859200, 4859210, 5344920, 4446060
+            };
+
+            private static bool Prefix(SteamManager __instance)
+            {
+                if (!ModConfig.OfflineMode.Value || __instance == null)
+                    return true;
+
+                try
+                {
+                    var list = new Il2CppSystem.Collections.Generic.List<uint>();
+                    foreach (var id in _allDlcs)
+                    {
+                        list.Add(id);
+                    }
+                    __instance.dlcOwnedList = list;
+                    Mod.Log.Msg("[OfflineStub] SteamManager.CheckAllDLCStatus 가로챔: 11개 공식 DLC 소유권 등록");
+                }
+                catch (Exception ex)
+                {
+                    Mod.Log.Error($"[OfflineStub] CheckAllDLCStatus 예외: {ex}");
+                }
+                return false;
+            }
+        }
+
+        // 0-4. DLC 설치/소유 질의 무조건 true
+        [HarmonyPatch(typeof(SteamManager), nameof(SteamManager.IsDLCInstalled))]
+        internal static class SteamManager_IsDLCInstalled_Patch
+        {
+            private static bool Prefix(uint appID, ref bool __result)
+            {
+                if (!ModConfig.OfflineMode.Value)
+                    return true;
+                __result = true;
+                return false;
+            }
+        }
+
         // 1. 부팅 관문: SteamManager.CheckTicket(Action callback)
         [HarmonyPatch(typeof(SteamManager), nameof(SteamManager.CheckTicket))]
         internal static class SteamManager_CheckTicket_Patch

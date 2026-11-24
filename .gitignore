@@ -5,6 +5,7 @@ slices/
 logs/
 .reatool/
 input/
+isil_dump/
 
 # .NET / C# 빌드 산출물
 **/bin/

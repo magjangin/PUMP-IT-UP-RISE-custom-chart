@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.9] - 2026-11-24
+
+### 기능·오프라인 보존 (Steam DRM 우회 & 공식 DLC 11종 전면 해금)
+- **로컬 Steam API 후킹 (`OfflineStubPatches`)**: Steam 클라이언트가 켜져 있지 않아도 게임이 꺼지지 않고 완전 독립 구동되도록 C# 모드 레벨에서 Steam 종속성을 가로챕니다.
+  - `SteamManager.InitManager` Prefix: 오프라인 모드일 때 `IsUseSteam = false`를 강제 설정해, 내부의 `SteamAPI_RestartAppIfNecessary`(`Application.Quit`) 및 `Steamworks.SteamClient.Init` 실행을 원천적으로 건너뛰고 세이브 로드 및 `CheckTicket`으로 직행합니다.
+  - `SteamManager.CheckUseSteam` / `GetIsUseSteam` Prefix: 항상 `false` 반환.
+  - `SteamManager.CheckAllDLCStatus` Prefix: Steamworks API 호출 없이 11개 공식 DLC AppID(5344930 EZ2ON, 3932570 REMIX, 4445930 VOL.2, 4528900 PHOENIX 2023, 4744660 PHOENIX 2024, 4446060/5344920 RHYTHM PASS S1/S2, OST 4종)를 `dlcOwnedList`에 직접 주입.
+  - `SteamManager.IsDLCInstalled` Prefix: 항상 `true` 반환하여 게임 내 모든 DLC 소유 처리.
+- **Steamless 및 Goldberg 검증**:
+  - `PUMP IT UP RISE.exe`의 PE 섹션 분석 결과 SteamStub DRM(`.bind`, `.steam`)이 없는 순수 Unity 바이너리임을 확인(Steamless 언패킹 불필요).
+  - 불안정한 외부 Goldberg DLL 대신 정품 원본 `steam_api64.dll`을 복원하고 모드 레벨에서 안정적으로 100% 우회하도록 구축.
+- **패치 수치**: Harmony 패치 클래스 총 65개 (오프라인/DLC 패치 5개 추가).
+
 ## [0.3.8] - 2026-11-24
 
 ### 안전·버그 수정
