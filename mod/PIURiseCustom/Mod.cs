@@ -12,7 +12,7 @@ namespace PIURiseCustom
 {
     public class Mod : MelonMod
     {
-        public const string Version = "0.3.10";
+        public const string Version = "0.3.11";
 
         internal static MelonLogger.Instance Log;
         internal static HarmonyLib.Harmony PatchHarmony;
@@ -45,6 +45,9 @@ namespace PIURiseCustom
         public override void OnUpdate()
         {
             FrameIndex++;
+            // 백그라운드 파일 캐시 예열 결과는 메인 스레드에서 한 번만 출력한다(관리 필드 읽기뿐이라 매 프레임 비용 없음)
+            if (CustomPackManager.WarmCacheSummary != null)
+                CustomPackManager.FlushWarmCacheLog();
             // 매 프레임 경로: 예외가 새면 MelonLoader가 프레임마다 스택을 찍어 로그가 폭주한다(게임 업데이트로 필드·입력 API가 바뀐 경우 등).
             // 서브시스템별로 격리해 첫 예외만 남기고 나머지 기능은 계속 돈다(v0.3.4).
             try { InGameOverlayUI.UpdateOverlay(); }

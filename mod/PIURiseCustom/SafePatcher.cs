@@ -23,6 +23,11 @@ namespace PIURiseCustom
         // 실기 검증을 마친 빌드 (AGENTS.md §1). 다르면 경고만 하고 계속 진행한다.
         internal const string VerifiedSteamBuildId = "26399668";
         internal const string VerifiedGameVersion = "1.6.0";
+        // 게임 파일 지문(바이트 크기). Steam이 관리하지 않는 독립 사본(H:\pump it up hwa)은 appmanifest가 없어 buildid를 못 읽고,
+        // Application.version은 패치 업데이트에도 그대로일 수 있다 → 코드·메타데이터 파일 크기로 "같은 빌드인가"를 한 번 더 본다(v0.3.11).
+        // 새 빌드를 실기 검증하면 VerifiedSteamBuildId와 함께 갱신할 것(AGENTS.md §1).
+        internal const long VerifiedGameAssemblySize = 76827648;
+        internal const long VerifiedMetadataSize = 17858588;
 
         internal static readonly List<string> FailedPatches = new();
         internal static int AppliedCount { get; private set; }
@@ -168,16 +173,50 @@ namespace PIURiseCustom
             string appVersion = null;
             try { appVersion = UnityEngine.Application.version; } catch { }
 
+            long asmSize = TryGetFileSize("GameAssembly.dll");
+            long metaSize = TryGetFileSize(Path.Combine(DataFolderName(), "il2cpp_data", "Metadata", "global-metadata.dat"));
+
             bool buildMismatch = buildId != null && buildId != VerifiedSteamBuildId;
             bool versionMismatch = appVersion != null && appVersion != VerifiedGameVersion;
+            // 크기를 못 읽은 경우(-1)는 판정에 쓰지 않는다
+            bool fileMismatch = (asmSize >= 0 && asmSize != VerifiedGameAssemblySize) || (metaSize >= 0 && metaSize != VerifiedMetadataSize);
 
-            string info = $"[Build] Steam buildid={buildId ?? "(알 수 없음)"}, 게임 버전={appVersion ?? "(알 수 없음)"} " +
+            string fingerprint = asmSize < 0 && metaSize < 0
+                ? "파일 지문 읽기 실패"
+                : (fileMismatch ? $"파일 지문 불일치(GameAssembly {asmSize}, metadata {metaSize})" : "파일 지문 일치");
+            string info = $"[Build] Steam buildid={buildId ?? "(알 수 없음)"}, 게임 버전={appVersion ?? "(알 수 없음)"}, {fingerprint} " +
                           $"(검증 빌드 {VerifiedSteamBuildId} / {VerifiedGameVersion})";
 
-            if (buildMismatch || versionMismatch)
+            if (buildMismatch || versionMismatch || fileMismatch)
                 Mod.Log.Warning(info + " — 검증되지 않은 빌드입니다. 패치 실패·오동작 시 AGENTS.md §1, docs/hooks.md를 참고하세요.");
             else
                 Mod.Log.Msg(info);
+        }
+
+        private static long TryGetFileSize(string relativePath)
+        {
+            try
+            {
+                var fi = new FileInfo(Path.Combine(MelonEnvironment.GameRootDirectory, relativePath));
+                return fi.Exists ? fi.Length : -1;
+            }
+            catch
+            {
+                return -1;
+            }
+        }
+
+        // "<exe 이름>_Data" (Unity 규칙). exe 이름이 바뀌어도 맞게 실행 파일 이름에서 만든다.
+        private static string DataFolderName()
+        {
+            try
+            {
+                string exe = MelonEnvironment.GameExecutablePath;
+                if (!string.IsNullOrEmpty(exe))
+                    return Path.GetFileNameWithoutExtension(exe) + "_Data";
+            }
+            catch { }
+            return "PUMP IT UP RISE_Data";
         }
 
         private static string TryReadSteamBuildId()

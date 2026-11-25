@@ -10,7 +10,8 @@ namespace PIURiseCustom
     /// <summary>
     /// 오프라인 서버 스텁 + 선택적 온라인 응답 캡처.
     /// OfflineMode=true일 때 모든 게임 서버 통신을 로컬에서 차단하고 안전한 스텁 응답을 반환한다.
-    /// (DLC 확인·Steam DRM은 건드리지 않으며 게임 서버 대체로만 한정)
+    /// v0.3.9부터 Steam 초기화(SteamManager.InitManager/CheckUseSteam/GetIsUseSteam)와 DLC 소유 확인(CheckAllDLCStatus/IsDLCInstalled)도
+    /// 오프라인 모드에서는 로컬로 처리한다(Steam 클라이언트·서버가 없어도 부팅되게 하는 보존 목적). OfflineMode=0이면 전부 원본 그대로다.
     /// </summary>
     internal static class OfflineStubPatches
     {
@@ -200,6 +201,14 @@ namespace PIURiseCustom
                 Mod.Log.Warning($"[OfflineStub] 응답 형식 미확인 명령 {cmd} → 빈 객체 {{}} 반환 (이 명령 직후 화면이 이상하면 응답 캡처 필요)");
         }
 
+        // 오프라인 관문 Prefix에서 게임 콜백을 대신 부를 때: 콜백 예외가 Prefix 밖으로 새면 Il2CppInterop 트램펄린이 삼키고
+        // 원본 실행 여부가 기본값으로 떨어져(원본이 서버로 나갈 수 있음) 로그도 남지 않는다 → 여기서 잡아 기록하고 Prefix는 계속 false를 돌려준다.
+        private static void InvokeGuarded(Il2CppSystem.Action callback, string where)
+        {
+            try { callback?.Invoke(); }
+            catch (Exception ex) { Mod.Log.Warning($"[OfflineStub] {where} 콜백 처리 중 예외(무시): {ex.Message}"); }
+        }
+
         // 0-1. 부팅 관문: SteamManager.InitManager(Action callback)
         // 오프라인 모드일 때 IsUseSteam을 false로 설정하여
         // SteamAPI_RestartAppIfNecessary(Application.Quit) 및 Steamworks.SteamClient.Init을 원천 건너뛰고
@@ -271,7 +280,7 @@ namespace PIURiseCustom
                         list.Add(id);
                     }
                     __instance.dlcOwnedList = list;
-                    Mod.Log.Msg("[OfflineStub] SteamManager.CheckAllDLCStatus 가로챔: 11개 공식 DLC 소유권 등록");
+                    Mod.Log.Msg($"[OfflineStub] SteamManager.CheckAllDLCStatus 가로챔: 공식 DLC {_allDlcs.Length}개 소유권 등록");
                 }
                 catch (Exception ex)
                 {
@@ -366,7 +375,8 @@ namespace PIURiseCustom
                 {
                     string stub = BuildStubResponse(NetCommand.checkTicketAndAuth);
                     Mod.Log.Msg($"[OfflineStub] SendAuth 차단 → {stub}");
-                    callback?.Invoke(stub);
+                    try { callback?.Invoke(stub); }
+                    catch (Exception ex) { Mod.Log.Warning($"[OfflineStub] SendAuth 콜백 처리 중 예외(무시): {ex.Message}"); }
                     return false;
                 }
 
@@ -444,7 +454,7 @@ namespace PIURiseCustom
                     return true;
 
                 Mod.Log.Msg("[OfflineStub] MaintenanceManager.TitleCheck 우회 → callback 실행");
-                callback?.Invoke();
+                InvokeGuarded(callback, "TitleCheck");
                 return false;
             }
         }
@@ -458,7 +468,7 @@ namespace PIURiseCustom
                     return true;
 
                 Mod.Log.Msg("[OfflineStub] MaintenanceManager.MaintenanceCheck 우회 → callback 실행");
-                callback?.Invoke();
+                InvokeGuarded(callback, "MaintenanceCheck");
                 return false;
             }
         }

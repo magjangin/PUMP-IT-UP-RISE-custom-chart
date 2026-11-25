@@ -38,8 +38,11 @@
 - [통합·빌드] 14. v0.3.5 (2026-11-23) — 클라우드 감사 초안 PR #9(같은 날 v0.3.4로 작성, 미빌드)를 릴리즈된 v0.3.4 위에 병합. 중복(프리뷰 핸들러·오버레이 Math 치환)은 v0.3.4 쪽 유지, 고유분(BMS 03/08 토큰 길이·탭 헤더·끝 없는 홀드·LNTYPE 1·`#LNOBJ`, `[OnlineGuard]`, config 부팅 전용·읽기 성공 후 시각 기록, `_catalogIds`, `_pendingCustomPack` 1회 사용, `GetScoreAndAccuracy` 훅 제거로 60개, 반환값 Postfix·MainStage.Start 단계 격리, `tools/release.ps1`)은 채택. 빌드 경고 0/오류 0, 실기 미확인
 - [완료·부팅 실기] 15. v0.3.6 (2026-11-24) — SafePatcher(사전 JIT 점검: 패치 클래스는 실패 시 미적용, 도우미는 경고), CustomPackManager(`SongIdRegistry` → `SaveCustomKey/song_ids.txt`), SaveCustomConfig(템플릿 기본값 깔기·모르는 키 알림), CustomChartParsers(`#LNOBJ` 짝 없는 끝 무시), GameplayOptionPatches(AutoPlay 키음 곡당 1회 조회), README 문제 해결 표. 실기 부팅: 60/60, JIT 352개 통과, ID 990001 유지
 - [수정·빌드] 16. v0.3.7 (2026-11-24) — CustomChartParsers: 표준 BMS 롱노트(LNTYPE 1 `5x` 채널, `#LNOBJ`) 로직 제거(사용자가 쓰지 않음, 키음 이름 방식만 유지)
+- [수정·빌드·부팅] 17. v0.3.11 전수 감사 (2026-11-25) — SafePatcher(게임 파일 지문), SongTableInjectorPatches(템플릿 songTable 우선, UI Postfix 3곳 격리), OfflineStubPatches(콜백 격리, 주석 정정), CustomPackManager(미디어 없는 폴더 ID 미부여, 부팅 파일 캐시 예열), CustomMarathonPatches(다음 곡 실패 시 정지), InGameOverlayUI·NoteVisualPatches(관리 null 비교), 문서(hooks 65개·Steam/DLC 행, README, AGENTS §1·§3·§5·§6·§7). 빌드 경고 0/오류 0, 독립 사본 부팅 65/65·지문 일치까지 확인. 선곡~플레이는 미실기(사용자가 나중에)
 
 ## 다음 세션 할 일
+4d. v0.3.11 실기: 부팅 `[hwa] 파일 캐시 예열 완료` → 선곡 첫 커서 `[CustomBGM] … 디스크에서 바로 읽음 Nms`(v0.3.10 72ms와 비교) → 커스텀 곡 1판(자켓·로딩 커튼·오버레이·결과). AGENTS.md §7 "미실기 (v0.3.11 변경분)"
+4e. Steam 클라이언트를 끈 상태로 독립 사본 부팅(v0.3.9 `InitManager` 훅이 종료 경로를 막는지) — 확인되면 AGENTS.md §1·§5·§6의 "미확인" 정리
 4c. v0.3.7/v0.3.6/v0.3.5 실기: 부팅 `[Patch] 60/60` → 커스텀 곡 1판. v0.3.4분(판정바 모양 1/2, 선곡 프리뷰 영상 여러 번 오가기, 마라톤 곡 도중 이탈 → 공식 곡 결과창 ESC)과 v0.3.5분(키음 이름 롱노트, 3자리 `#WAV` 차트 BPM, `OfflineMode=0`의 `[OnlineGuard]`) 항목은 AGENTS.md §7
 0. v0.3.2 남은 실기: 인게임 HUD 점수 유무, 방 생성 창의 커스텀 곡 제목·자켓 표시, 멀티 방 목록 새로고침 등 나머지 조작. (`Patches=63`·멀티 메뉴 진입·방 생성/입장/빠른입장 차단·MaxScore는 확인 완료)
 0b. ~~Perfect 수 744→417 차이 조사~~ **완료 (2026-11-23)**: 노트 누락 아님(탭 328+홀드 헤드 15=343 보존, 격자 밖·중복 0). 차이는 홀드 몸통 틱 판정이 Split에 따라 달라지기 때문. 홀드 틱의 정확한 공식은 미확인(AGENTS.md §7)

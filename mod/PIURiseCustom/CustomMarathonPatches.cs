@@ -72,7 +72,9 @@ namespace PIURiseCustom
 
         public static void OnUpdate()
         {
-            if (!SaveCustomConfig.CustomMarathon || _activeResultUI == null || _transitionTriggered)
+            // 결과창 참조는 우리가 null로 비우므로 관리 비교(is null)를 먼저 해 평소엔 IL2CPP 호출(Unity == null)을 하지 않는다.
+            // 마라톤 결과창이 떠 있을 때만 파괴 여부를 Unity 비교로 확인한다.
+            if (!SaveCustomConfig.CustomMarathon || _activeResultUI is null || _transitionTriggered || _activeResultUI == null)
             {
                 // 배너를 만든 적 없으면 매 프레임 Unity null 비교(IL2CPP 호출)도 하지 않는다
                 if (_bannerCanvasObj is not null)
@@ -118,7 +120,13 @@ namespace PIURiseCustom
                 var db = PIUDataBase.Instance;
                 var pd = PlayerData.Instance;
                 if (db == null || pd == null || db.songTable == null || !db.songTable.ContainsKey(next.SongId))
+                {
+                    // 예전엔 그냥 돌아가서, 자동 진행 타이머가 켜져 있으면 이 실패를 매 프레임 조용히 다시 시도했다(v0.3.11)
+                    Mod.Log?.Warning($"[Marathon] 다음 곡 {next.SongId}({next.Title})을 곡 표에서 찾지 못해 마라톤을 멈춥니다");
+                    _activeResultUI = null;
+                    DestroyBanner();
                     return;
+                }
 
                 _transitionTriggered = true;
                 var song = db.songTable[next.SongId];

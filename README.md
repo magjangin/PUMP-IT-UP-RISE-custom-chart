@@ -2,7 +2,7 @@
 
 **PUMP IT UP RISE** (Steam / Unity 2022.3 IL2CPP)용 MelonLoader 기반 **커스텀 차트 · 미디어 주입 · 오프라인 모드** 통합 프로젝트입니다.
 
-- **현재 버전:** `v0.3.8`
+- **현재 버전:** `v0.3.11`
 - **제작자:** 화영왕 (`magjangin`)
 - **대상 게임:** PUMP IT UP RISE (Steam AppID `2756930`, Build `26399668` 기준 실기 검증)
 - **로더:** MelonLoader `0.7.3` (`net6.0` / IL2CPP)
@@ -33,7 +33,7 @@
 - 온라인 모드(`OfflineMode=0`)에서도 커스텀 곡·`AutoPlay`·`AllPerfect` 플레이의 결과 전송은 서버로 보내지 않습니다(`[OnlineGuard]`).
 - `OfflineMode`·`CustomEnabled` 변경은 게임을 다시 시작해야 적용됩니다(다른 설정은 다음 곡부터 핫리로드).
 - 응답 형식을 모르는 서버 명령은 빈 객체 `{}`로 응답하고 로그에 한 번 경고합니다(`[OfflineStub] 응답 형식 미확인 명령`).
-- Steam 소유권 및 DLC 검증(`IsDLCInstalled`)은 우회하지 않으며, 오프라인 모드에서도 정상 실행되는 Steam 클라이언트를 그대로 사용합니다.
+- 오프라인 모드에서는 Steam 초기화(`SteamManager.InitManager`)와 DLC 소유 확인(`CheckAllDLCStatus`/`IsDLCInstalled`)도 로컬에서 처리합니다(v0.3.9, 서버·Steam 종료 대비 보존 목적). `OfflineMode=0`이면 Steam·DLC 확인은 게임 원본 그대로입니다. Steam 클라이언트가 꺼진 상태의 부팅은 아직 실기로 확인하지 않았습니다.
 
 ### 5. 플레이 옵션 & 인게임 오버레이 (`SaveCustomKey/config.txt`)
 Sixtar Gate: STARTRAIL / DEFLATE 통합 규격과 호환되는 설정 파일을 지원하며, **수정 후 저장하면 다음 곡 진입 시 자동 핫리로드**됩니다.
@@ -125,7 +125,7 @@ dotnet build "mod/PIURiseCustom/PIURiseCustom.csproj" -c Release -p:GamePath="C:
 
 ## 게임 업데이트 대응
 
-- 모드는 부팅할 때 `MelonLoader/Latest.log`에 Steam 빌드 번호와 게임 버전을 남기고, 검증된 빌드(`26399668` / `1.6.0`)와 다르면 경고합니다.
+- 모드는 부팅할 때 `MelonLoader/Latest.log`에 Steam 빌드 번호·게임 버전·게임 파일 지문(`GameAssembly.dll`·`global-metadata.dat` 크기)을 남기고, 검증된 빌드(`26399668` / `1.6.0`)와 다르면 경고합니다. Steam이 관리하지 않는 복사본처럼 빌드 번호를 못 읽는 경우에도 파일 지문으로 업데이트 여부를 알 수 있습니다(v0.3.11).
 - Harmony 패치는 **기능별로 따로 적용**됩니다. 업데이트로 일부 메서드가 바뀌어도 그 기능만 꺼지고 나머지는 동작하며, 로그의 `[Patch] … 실패` 줄에 꺼진 패치 이름이 나옵니다.
 - 오프라인 차단 패치가 하나라도 빠지면 `[Patch] 오프라인 스텁 패치 … 적용 실패` **오류**가 뜹니다. 이 줄이 보이면 고칠 때까지 온라인 계정으로 플레이하지 마세요.
 - 업데이트로 패치 코드가 쓰는 게임 내부 필드가 사라졌다면, 부팅 때 미리 걸러 그 패치만 끄고 `[Patch] 적용 실패 … JIT 실패` 줄로 알려줍니다(v0.3.6).
@@ -158,7 +158,7 @@ dotnet build "mod/PIURiseCustom/PIURiseCustom.csproj" -c Release -p:GamePath="C:
 ```text
 .
 ├─ mod/
-│  ├─ PIURiseCustom/      # 통합 커스텀 차트 · 오프라인 주력 모드 (v0.3.8)
+│  ├─ PIURiseCustom/      # 통합 커스텀 차트 · 오프라인 주력 모드 (v0.3.11)
 │  └─ PIURiseSkeleton/    # 읽기 전용 판정 관찰용 최소 스켈레톤 모드 (PIURiseCustom과 함께 설치하지 말 것)
 ├─ docs/
 │  ├─ hooks.md            # 후킹 타깃, 전체 패치 목록, 업데이트 점검 절차

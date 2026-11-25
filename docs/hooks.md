@@ -42,9 +42,9 @@ JUDGE 열거형: 0 Perfect, 1 Great, 2 Good, 3 Bad, 4 Miss (src_dummy\PIUMobileS
 | `SteamManager.CheckAllDLCStatus()` | 0x7DB090 | 시그니처만 | DLC 소유 확인 |
 | `SteamManager.IsDLCInstalled(uint appID)` | 0x7DBA90 | 시그니처만 | DLC 설치 확인 |
 
-## 4. PIURiseCustom v0.3.8 실제 패치 목록 (속성 기반 60개 + 동적 2개)
+## 4. PIURiseCustom v0.3.11 실제 패치 목록 (속성 기반 65개 + 동적 2개)
 
-v0.3.2는 63개(2026-11-23 실기 부팅 63/63), v0.3.3은 61개, v0.3.4도 61개, v0.3.5는 로그 전용 `PlayBase.GetScoreAndAccuracy` 훅(값 형식 반환 → 박싱 크래시 위험, 호출 0회)을 빼서 60개. v0.3.3부터 노트 비주얼 `LateUpdate` 훅 2개는 `SafePatcher` 집계에서 빠지고, 비주얼 기능이 하나라도 켜졌을 때만 `MainStage.Start`에서 붙는다(`NoteVisualPatches.LateUpdateHooks.Sync`).
+v0.3.2는 63개(2026-11-23 실기 부팅 63/63), v0.3.3은 61개, v0.3.4도 61개, v0.3.5는 로그 전용 `PlayBase.GetScoreAndAccuracy` 훅(값 형식 반환 → 박싱 크래시 위험, 호출 0회)을 빼서 60개, v0.3.9는 Steam 초기화·DLC 소유 처리 훅 5개를 더해 65개(v0.3.11까지 같음). v0.3.3부터 노트 비주얼 `LateUpdate` 훅 2개는 `SafePatcher` 집계에서 빠지고, 비주얼 기능이 하나라도 켜졌을 때만 `MainStage.Start`에서 붙는다(`NoteVisualPatches.LateUpdateHooks.Sync`).
 
 RVA 대신 **이름**으로 걸린다. 게임 업데이트 후 `[Patch] … 실패` 로그에 나온 클래스 이름을 이 표에서 찾아 영향 기능을 판단한다.
 "관문"은 Prefix가 원본 실행 여부를 좌우하는 지점 — 여기서 실패·예외가 나면 해당 화면 자체가 깨질 수 있다.
@@ -60,6 +60,7 @@ RVA 대신 **이름**으로 걸린다. 게임 업데이트 후 `[Patch] … 실�
 | BGA | `BGAPlayer.NeedCommonBgaChecker`·`Load`, `GlobalFunc.DoesAssetExists`, `EyeCatchUI.PreparePreviewVideo` | Prefix | 공통/템플릿 BGA, 프리뷰 영상 없음 |
 | 자켓·커튼 | `SongDataCell.Init`, `MSListBox.UpdateDisplayContent`·`UpdateLevels`, `EyeCatchUI.UpdateSong`, `IngameSongInfoUI.OnShow`·`SetNumberImages`·`SetLevelType`·`SetInfoData`, `BGAPlayerLoader.SetInfoData`, `ResultDefaultGameInfo.SetData`, `SongListContent.GetEyecatchSprite`·`GetArcadeEyecatchSprite` | Prefix/Postfix | 기본 이미지·템플릿 난이도 표시 |
 | 멀티 방 생성 창 | `MultiStageCreateRoomPopup.SetSongInit` | Prefix(`ref songId`→공식 템플릿 곡, `__state`로 원래 ID 기억)+Postfix(제목·자켓 복원) | 방 생성 창 제목·자켓이 템플릿 곡으로 보임(오프라인 `DLCEntrys` 보강은 별도: `OfflineStubPatches.EnsureOfflineDlcEntries`) |
+| 오프라인(Steam·DLC, v0.3.9) | `SteamManager.InitManager`(Prefix: `IsUseSteam=false` → `SteamAPI_RestartAppIfNecessary`·`SteamClient.Init` 건너뜀), `CheckUseSteam`·`GetIsUseSteam`(false 반환), `CheckAllDLCStatus`(`dlcOwnedList`에 공식 DLC 11개 등록), `IsDLCInstalled`(true 반환) | Prefix(관문) | `InitManager` 실패 시 Steam 초기화가 원본대로 돌아 Steam 클라이언트가 없으면 종료될 수 있음(v0.3.9 이전 동작), DLC 훅 실패 시 DLC 곡 잠김. 모두 `OfflineMode=1`일 때만 동작 |
 | 오프라인 | `SteamManager.CheckTicket`, `NetworkManager.StartJwtCoroutine`·`SendHeartBeatRoutine`·`SendAuth`·`Send`, `MaintenanceManager.TitleCheck`·`MaintenanceCheck`·`AlramNetworkError`, `CommonUtil.SetPlayLogAtServer`, `NetworkManager.InitMultiCon`(v0.3.2, 멀티 접속 대상을 `127.0.0.1:1`로 교체 — `ConnectAsync` 직접 후킹은 크래시, `Task.Delay(-1)` 보류는 UI 먹통) | Prefix(관문) | **부팅 불가 또는 서버 접속 시도** — 업데이트 후 이 중 하나라도 실패하면 `OfflineMode=0`으로 두지 말고 먼저 고칠 것 |
 | 플레이 옵션 | `PUMPPlayer.JudgeNote`·`JudgeLine`·`DrawStep`·`JudgeStep_PostProcess`, `PlayBase.StartSong`, `PlayerData.SaveUserPlayResult`, `NumberRoller.RollCombo(StatType, int, float)`(MaxScore 적용 지점), `ArcadeResultUI.ApplyScoreCoroutine`(값 변경 없는 `[미처리 경로]` 로그 전용) | Prefix/Postfix | AutoPlay/AllPerfect/BlockSave/MaxScore/판정바 해당 기능만 꺼짐 (v0.3.1까지의 `CalcNewBestScore`·`ACCalcNewBestScore`·`ScoreRoller.InitData`, v0.3.4까지의 `PlayBase.GetScoreAndAccuracy`(값 형식 반환) 훅은 제거됨) |
 | 클리어 연출 유예 | `PlayBase.<CoShowNoMiss>d__N.MoveNext` (`TargetMethod`로 이름 검색) | Prefix | PERFECT GAME 연출이 곡 중간에 뜸 |
@@ -74,8 +75,8 @@ RVA 대신 **이름**으로 걸린다. 게임 업데이트 후 `[Patch] … 실�
 1. `appmanifest_2756930.acf`의 `buildid` 확인 → 26399668이 아니면 업데이트된 것
 2. 게임을 MelonLoader로 1회 실행 → `MelonLoader\Il2CppAssemblies\` 재생성 (모드는 일단 그대로 둬도 된다: 실패 패치만 꺼지고 부팅은 계속됨)
 3. `Latest.log`에서 확인:
-   - `[Build] …` 경고 줄 (검증 빌드와 다름)
-   - `[Patch] Harmony 패치 N/60개 적용, 실패 M개 [그룹 K개, …]` — 실패 클래스 이름과 기능 그룹(바깥 클래스 이름)별 개수
+   - `[Build] …` 경고 줄 (검증 빌드와 다름). v0.3.11부터 `파일 지문 불일치(GameAssembly N, metadata M)`도 함께 나온다 — Steam appmanifest가 없는 복사본에서도 업데이트를 잡는 근거
+   - `[Patch] Harmony 패치 N/65개 적용, 실패 M개 [그룹 K개, …]` — 실패 클래스 이름과 기능 그룹(바깥 클래스 이름)별 개수
    - `[Patch] 적용 실패 … JIT 실패 — MissingFieldException` 같은 줄(v0.3.6) — 대상 메서드는 그대로인데 패치 본문이 쓰는 interop 필드·메서드가 사라진 것. 그 패치는 걸리지 않고 원본이 그대로 돈다. 메시지의 `타입.메서드`를 보고 바뀐 멤버를 새 덤프에서 찾을 것
    - `[Patch] 사전 JIT 점검에서 도우미 N곳…` 경고(v0.3.6) — 패치가 부르는 도우미(파서·오버레이 등)가 interop과 맞지 않음
    - `[Patch] 오프라인 스텁 패치 N개 적용 실패` **오류**(v0.3.4) — 이 줄이 있으면 6번을 먼저 해결할 것
@@ -83,11 +84,11 @@ RVA 대신 **이름**으로 걸린다. 게임 업데이트 후 `[Patch] … 실�
    - 비주얼 기능을 켠 곡에서 `[NoteVisual] … 찾지 못해` / `… 실패` 경고 (동적 훅)
 4. 실패 클래스를 §4 표에서 찾아 대상 메서드를 새 덤프(`il2cpp_dump`, ModdingSupportTool `search_reference`)에서 다시 찾는다. 이름이 바뀌었으면 패치 속성만 고치면 된다
 5. `dotnet build … -c Release` — interop 시그니처가 바뀐 메서드는 컴파일 오류로 드러난다 (interop 미생성이면 `CheckGameReferences`가 원인 메시지를 낸다)
-6. 오프라인 훅 10종(§4 '오프라인' 행, 멀티 WebSocket 차단 포함)이 전부 적용될 때까지는 `OfflineMode=1` 유지 + 온라인 접속 금지
-7. 커스텀 곡 1판(선곡 → 플레이 → 결과) 실기 확인 후 `SafePatcher.VerifiedSteamBuildId`/`VerifiedGameVersion`, AGENTS.md §1·§7, 이 문서 제목의 빌드 번호를 갱신
+6. 오프라인 훅 15종(§4 '오프라인' 두 행: Steam·DLC 5종 + 서버 10종, 멀티 WebSocket 차단 포함)이 전부 적용될 때까지는 `OfflineMode=1` 유지 + 온라인 접속 금지
+7. 커스텀 곡 1판(선곡 → 플레이 → 결과) 실기 확인 후 `SafePatcher.VerifiedSteamBuildId`/`VerifiedGameVersion`/`VerifiedGameAssemblySize`/`VerifiedMetadataSize`, AGENTS.md §1·§7, 이 문서 제목의 빌드 번호를 갱신
 8. RVA가 필요한 분석(§1~3 표)은 새 GameAssembly.dll 기준으로 다시 뽑아야 한다
 
 ## 주의 (추정 포함)
 
 - `NetworkManager`, `MultiStage`, `GameBeginPacket/GameEndPacket`, `PlayerNetInfo` 등이 있어 **온라인 기록·멀티 기능이 있다.** 점수/판정을 바꾸는 패치는 온라인 기록 오염·계정 제재 위험이 있으므로 스켈레톤은 **읽기 전용 Postfix(로그)** 만 넣었다.
-- DLC 확인(`IsDLCInstalled`) 우회는 하지 않는다. 이 문서에는 위치만 기록한다.
+- v0.3.8까지는 DLC 확인(`IsDLCInstalled`)을 건드리지 않았다. v0.3.9부터 `OfflineMode=1`일 때만 Steam 초기화·DLC 소유 확인을 로컬 처리한다(서버·Steam 종료 대비 보존 목적, §4 표). `OfflineMode=0`이면 원본 그대로다.

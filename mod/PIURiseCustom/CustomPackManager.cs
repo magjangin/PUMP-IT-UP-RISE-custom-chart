@@ -100,8 +100,12 @@ namespace PIURiseCustom
             {
                 try
                 {
-                    string relKey = SongIdRegistry.RelativeKey(root, dir);
-                    var pack = BuildPack(dir, folderName, albumName, files, () => ids.GetOrAssign(relKey));
+                    var pack = BuildPack(dir, folderName, albumName, files);
+                    // 차트·음원·영상·자켓이 하나도 없는 폴더(예: info.txt만 있음)는 등록하지 않으므로 곡 ID도 주지 않는다(v0.3.11).
+                    // 예전엔 ID를 먼저 받아 song_ids.txt에 쓰지 않는 번호가 쌓였다.
+                    if (!pack.HasPlayableMedia)
+                        return;
+                    pack.SongId = ids.GetOrAssign(SongIdRegistry.RelativeKey(root, dir));
                     RegisterPack(pack, isCatalogSong: !catalogUnlessOverride || !pack.IsOverrideSlot);
                 }
                 catch (Exception ex)
@@ -142,7 +146,74 @@ namespace PIURiseCustom
 
             ids.SaveIfChanged();
 
-            Mod.Log?.Msg($"[hwa] 스캔 완료: {root} — 목록 주입 곡 {_catalogSongs.Count}개, 전체 등록 팩 {_byFolderKey.Count}개");
+            Mod.Log?.Msg($"[hwa] 스캔 완료: {root} — 목록 주입 곡 {_catalogSongs.Count}개, 전체 등록 팩 {_bySongId.Count}개");
+            WarmFileCacheInBackground();
+        }
+
+        // ===== 부팅 직후 파일 캐시 예열 (v0.3.11) =====
+        // 선곡 화면에서 커스텀 곡에 처음 커서를 올리면 미리듣기 로드(PreparePreviewVideoAndAudio)가 미리 읽기 시작 지점
+        // (EyeCatchUI.UpdateSong Postfix)보다 먼저 와서, 음원 파일을 메인 스레드가 디스크에서 직접 읽었다(실기 6.6MB 72ms).
+        // 부팅 때 낮은 우선순위 스레드로 음원·차트·이미지를 한 번 읽어 두면 OS 파일 캐시에 올라가, 그 첫 읽기도 메모리 복사 속도가 된다.
+        // 데이터를 들고 있지 않으므로(읽고 버림) 모드 메모리는 늘지 않는다. 영상(BGA)은 크고 VideoPlayer가 스트리밍하므로 제외.
+        private const long WarmCacheBudgetBytes = 512L * 1024 * 1024;
+        internal static volatile string WarmCacheSummary; // 예열 스레드가 끝나면 채움 → 메인 스레드(CacheSongTable Postfix)에서 한 번 출력
+
+        private static void WarmFileCacheInBackground()
+        {
+            var paths = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            void Add(string path) { if (!string.IsNullOrEmpty(path) && seen.Add(path)) paths.Add(path); }
+            // 선곡 화면에서 먼저 쓰는 것부터: 미리듣기 음원 → 자켓 → 차트 → 본게임 음원 → 로딩 썸네일
+            foreach (var p in _catalogSongs) Add(p.PreviewBgmPath ?? p.BgmPath);
+            foreach (var p in _catalogSongs) Add(p.JacketPath);
+            foreach (var p in _catalogSongs) Add(p.ChartPath);
+            foreach (var p in _catalogSongs) Add(p.BgmPath);
+            foreach (var p in _catalogSongs) Add(p.LoadingThumbnailPath);
+            if (paths.Count == 0)
+                return;
+
+            try
+            {
+                var t = new System.Threading.Thread(() => WarmFiles(paths))
+                {
+                    IsBackground = true,
+                    Priority = System.Threading.ThreadPriority.BelowNormal,
+                    Name = "PIURiseCustom.WarmFileCache"
+                };
+                t.Start();
+            }
+            catch { } // 예열은 최적화일 뿐 — 실패해도 기능에는 영향 없음
+        }
+
+        private static void WarmFiles(List<string> paths)
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            byte[] buf = new byte[1 << 20];
+            long total = 0;
+            int files = 0, skipped = 0;
+            foreach (string path in paths)
+            {
+                try
+                {
+                    using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 1, FileOptions.SequentialScan);
+                    if (total + fs.Length > WarmCacheBudgetBytes) { skipped++; continue; }
+                    int n;
+                    while ((n = fs.Read(buf, 0, buf.Length)) > 0)
+                        total += n;
+                    files++;
+                }
+                catch { skipped++; }
+            }
+            WarmCacheSummary = $"[hwa] 파일 캐시 예열 완료 — {files}개 {total / 1024} KB, {sw.ElapsedMilliseconds}ms (건너뜀 {skipped}개, 상한 {WarmCacheBudgetBytes / (1024 * 1024)} MB)";
+        }
+
+        /// <summary>예열 결과를 메인 스레드에서 한 번만 로그로 남긴다(백그라운드 스레드 로깅 회피).</summary>
+        internal static void FlushWarmCacheLog()
+        {
+            string s = WarmCacheSummary;
+            if (s == null) return;
+            WarmCacheSummary = null;
+            Mod.Log?.Msg(s);
         }
 
         private static void RegisterPack(CustomPack pack, bool isCatalogSong)
@@ -218,7 +289,7 @@ namespace PIURiseCustom
         }
 
         // 디렉터리 목록은 Scan에서 한 번만 읽어 넘긴다 (예전엔 IsSongFolder/BuildPack이 폴더마다 두 번 읽었음)
-        private static CustomPack BuildPack(string dir, string folderName, string albumName, string[] files, Func<string> nextSongId)
+        private static CustomPack BuildPack(string dir, string folderName, string albumName, string[] files)
         {
             string chartPath = FindFirstByExt(files, ChartExts);
             string bgmPath = FindBgm(files);
@@ -230,7 +301,6 @@ namespace PIURiseCustom
 
             var pack = new CustomPack
             {
-                SongId = nextSongId(),
                 FolderPath = dir,
                 FolderName = folderName,
                 AlbumName = albumName,
