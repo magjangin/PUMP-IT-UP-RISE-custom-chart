@@ -42,8 +42,11 @@
 - [수정·빌드] 18. v0.3.12 (2026-11-25) — PngDecoder.cs 신설(관리 PNG 디코더, PIL 대조 13종 일치), SongTableInjectorPatches(자켓·로딩 썸네일 백그라운드 디코딩 → `LoadRawTextureData`), CustomMediaPatches(커서 진입 시 썸네일 미리 풀기), ModConfig(`BackgroundImageDecode`), 문서(Steam 없는 부팅은 사용자 확인 사항으로 정정). 빌드 경고 0/오류 0, 실기 미확인
 - [수정·빌드] 19. v0.3.13 (2026-11-25) — OfflineStubPatches·SaveCustomConfig(DLC 해금 `UnlockAllDlc` 토글, 기본 끔 — 사용자 요청), ChartModel(BMS 헤더 먼저 읽기, 회귀 비교 123건 일치·헤더 뒤 파일 120건 교정). 빌드 경고 0/오류 0, 실기 미확인
 
+- [수정·빌드·부팅] 20. v0.3.14 전수 감사 (2026-11-25) — CustomPackManager(앨범 폴더 강/약 신호 판정), CustomMediaPatches(오디오 콜백·BGA 이벤트 격리), Util(CP949 등록 `Lazy`), OfflineStubPatches(CheckTicket 콜백 격리), SaveCustomConfig(예전 config.txt에 새 키 기본값 덧붙이기), InGameOverlayUI·SongTableInjectorPatches(Unity null 비교 축소). 빌드 경고 0/오류 0, 실기 부팅 65/65·`UnlockAllDlc` 덧붙이기 확인
+
 ## 다음 세션 할 일
-4g. v0.3.13 실기: 부팅 로그 `DLC 없음으로 처리 (UnlockAllDlc=0)` → 공식·커스텀 곡 1판씩. `UnlockAllDlc=1` 재시작 시 DLC 곡 열림
+4h. v0.3.14 실기: 앨범 배치(`hwa/<앨범>/cover.png` + 하위 곡 폴더)에서 하위 곡이 CUSTOM 탭에 뜨는지, 선곡 리스트 자켓·키뷰어 색 변화 정상
+4g. v0.3.13 실기: ~~부팅 로그 `DLC 없음으로 처리 (UnlockAllDlc=0)`~~(v0.3.14 부팅에서 확인) → 공식·커스텀 곡 1판씩. `UnlockAllDlc=1` 재시작 시 DLC 곡 열림
 4f. v0.3.12 실기: 자켓·로딩 커튼이 뒤집히거나 색이 달라지지 않았는지 먼저 볼 것 → `[CustomJacket] … 미리 디코딩됨, 업로드 Nms` 로그. 이상하면 MelonPreferences `BackgroundImageDecode=false`로 즉시 복귀 가능
 4d. v0.3.11 실기: 부팅 `[hwa] 파일 캐시 예열 완료` → 선곡 첫 커서 `[CustomBGM] … 디스크에서 바로 읽음 Nms`(v0.3.10 72ms와 비교) → 커스텀 곡 1판(자켓·로딩 커튼·오버레이·결과). AGENTS.md §7 "미실기 (v0.3.11 변경분)"
 4c. v0.3.7/v0.3.6/v0.3.5 실기: 부팅 `[Patch] 60/60` → 커스텀 곡 1판. v0.3.4분(판정바 모양 1/2, 선곡 프리뷰 영상 여러 번 오가기, 마라톤 곡 도중 이탈 → 공식 곡 결과창 ESC)과 v0.3.5분(키음 이름 롱노트, 3자리 `#WAV` 차트 BPM, `OfflineMode=0`의 `[OnlineGuard]`) 항목은 AGENTS.md §7

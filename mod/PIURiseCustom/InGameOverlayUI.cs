@@ -480,14 +480,16 @@ namespace PIURiseCustom
 
             public static KeyTables Fetch(GameInputManager gim)
             {
-                if (gim == null) return default;
+                if (gim is null) return default;
                 return new KeyTables { K5 = gim.keyTbl5k, K5Sub = gim.keyTbl5kSub, K6 = gim.keyTbl6k, K6Sub = gim.keyTbl6kSub };
             }
         }
 
+        // gim은 호출부(UpdateOverlay)가 Unity 비교(!= null)로 한 번 확인한 객체다. 여기서는 관리 비교(is null)만 해
+        // 레인·키 테이블마다 Unity op_Equality(IL2CPP 호출)를 반복하지 않는다(프레임당 최대 35회 → 0회, v0.3.14).
         private static bool IsBtnDown(GameInputManager gim, Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<GameInputManager.BTN_MEMBER> tbl, int idx)
         {
-            if (gim == null || tbl == null || idx < 0 || idx >= tbl.Length)
+            if (gim is null || tbl is null || idx < 0 || idx >= tbl.Length)
                 return false;
             var st = gim.GetButtonState(tbl[idx]);
             return st == GameInputManager.INPUT_STATE.PRESS || st == GameInputManager.INPUT_STATE.HOLD;
@@ -495,7 +497,7 @@ namespace PIURiseCustom
 
         private static bool IsLanePressed(GameInputManager gim, KeyTables t, int lane)
         {
-            if (gim == null)
+            if (gim is null)
                 return false;
 
             if (IsBtnDown(gim, t.K5, lane) || IsBtnDown(gim, t.K5Sub, lane))
