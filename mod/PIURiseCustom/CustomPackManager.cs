@@ -443,7 +443,7 @@ namespace PIURiseCustom
             return null;
         }
 
-        private static bool TryReadImageDimensions(string path, out int width, out int height)
+        internal static bool TryReadImageDimensions(string path, out int width, out int height)
         {
             width = 0;
             height = 0;
