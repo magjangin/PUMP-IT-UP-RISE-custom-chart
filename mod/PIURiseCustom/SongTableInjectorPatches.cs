@@ -20,6 +20,7 @@ namespace PIURiseCustom
         internal static string TemplateOfficialSongId;
         internal static int TemplateOfficialLevel = 1;
         internal static string TemplateOfficialPlayType = "Single";
+        private static bool _templateFromMainTable;
 
         // 마지막으로 선택한 커스텀 곡의 원래 난이도 (로딩 화면/인게임 UI 표시 복원용)
         internal static int LastCustomSelectedLevel = 10;
@@ -28,7 +29,7 @@ namespace PIURiseCustom
         // 디코딩에 실패한 이미지 경로. 선곡 리스트 스크롤마다(UpdateDisplayContent) 깨진 파일을 다시 읽어 프레임이 끊기는 것을 막는다.
         private static readonly HashSet<string> _jacketFailed = new(StringComparer.OrdinalIgnoreCase);
 
-        private static void InjectIntoTable(Il2CppSystem.Collections.Generic.Dictionary<string, Song> table, string tableName)
+        private static void InjectIntoTable(Il2CppSystem.Collections.Generic.Dictionary<string, Song> table, string tableName, bool isMainTable)
         {
             if (!ModConfig.CustomEnabled.Value || table == null)
                 return;
@@ -37,16 +38,22 @@ namespace PIURiseCustom
             if (songs.Count == 0)
                 return;
 
-            // 공식 곡 중 하나를 찾아 Channel/Generation 기본값 및 템플릿 ID 확보
+            // 공식 곡 중 하나를 찾아 Channel/Generation 기본값 및 템플릿 ID 확보.
+            // 템플릿 ID는 GAMESTART·LoadStep이 쓰므로 songTable 곡이 우선이다(v0.3.11). 아케이드 표가 먼저 캐시되면 거기서 임시로 정하되,
+            // 뒤이어 songTable을 주입할 때 songTable 곡으로 다시 정한다(아케이드 전용 곡이 템플릿으로 남지 않게).
+            bool mayPickTemplateId = TemplateOfficialSongId == null || (isMainTable && !_templateFromMainTable);
             Song template = null;
             foreach (var kv in table)
             {
                 if (!CustomPackManager.IsCatalogSongId(kv.Key))
                 {
                     template = kv.Value;
-                    if (TemplateOfficialSongId == null)
+                    if (mayPickTemplateId)
                     {
                         TemplateOfficialSongId = kv.Key;
+                        _templateFromMainTable = isMainTable;
+                        TemplateOfficialLevel = 1; // 다시 정할 때 이전 템플릿의 난이도가 남지 않게
+                        TemplateOfficialPlayType = "Single";
                         try
                         {
                             var levels = kv.Value.Levels;
@@ -160,7 +167,7 @@ namespace PIURiseCustom
                 {
                     var db = PIUDataBase.Instance;
                     if (db != null)
-                        InjectIntoTable(db.songTable, "songTable");
+                        InjectIntoTable(db.songTable, "songTable", isMainTable: true);
                 }
                 catch (Exception ex)
                 {
@@ -194,7 +201,7 @@ namespace PIURiseCustom
                 {
                     var db = PIUDataBase.Instance;
                     if (db != null)
-                        InjectIntoTable(db.acSongTable, "acSongTable");
+                        InjectIntoTable(db.acSongTable, "acSongTable", isMainTable: false);
                 }
                 catch (Exception ex)
                 {
@@ -253,16 +260,20 @@ namespace PIURiseCustom
         {
             private static void Postfix(SongDataCell __instance, string songID)
             {
-                if (!ModConfig.CustomEnabled.Value || __instance == null || __instance._eyeCatch == null)
-                    return;
+                try
+                {
+                    // 공식 곡은 Unity 객체 비교(IL2CPP 호출)보다 먼저 관리 사전 조회로 걸러낸다
+                    if (!ModConfig.CustomEnabled.Value)
+                        return;
+                    var pack = CustomPackManager.ResolveBySongId(songID);
+                    if (pack == null || string.IsNullOrEmpty(pack.JacketPath) || __instance == null || __instance._eyeCatch == null)
+                        return;
 
-                var pack = CustomPackManager.ResolveBySongId(songID);
-                if (pack == null || string.IsNullOrEmpty(pack.JacketPath))
-                    return;
-
-                var sprite = LoadOrGetJacket(pack.JacketPath);
-                if (sprite != null)
-                    __instance._eyeCatch.sprite = sprite;
+                    var sprite = LoadOrGetJacket(pack.JacketPath);
+                    if (sprite != null)
+                        __instance._eyeCatch.sprite = sprite;
+                }
+                catch { }
             }
         }
 
@@ -432,24 +443,31 @@ namespace PIURiseCustom
 
             private static void Postfix(IngameSongInfoUI __instance)
             {
-                if (!ModConfig.CustomEnabled.Value || __instance == null || __instance._bgImage == null)
-                    return;
-
-                var pd = PlayerData.Instance;
-                if (pd == null)
-                    return;
-
-                var pack = CustomPackManager.ResolveBySongId(Util.CurrentSongId());
-                string loadingImg = pack?.LoadingThumbnailPath ?? pack?.JacketPath;
-                if (string.IsNullOrEmpty(loadingImg))
-                    return;
-
-                var sprite = LoadOrGetJacket(loadingImg);
-                if (sprite != null)
+                try
                 {
-                    __instance._bgImage.sprite = sprite;
-                    __instance._bgImage.color = Color.white;
-                    pd.Curtain = sprite;
+                    if (!ModConfig.CustomEnabled.Value)
+                        return;
+                    var pack = CustomPackManager.ResolveBySongId(Util.CurrentSongId());
+                    string loadingImg = pack?.LoadingThumbnailPath ?? pack?.JacketPath;
+                    if (string.IsNullOrEmpty(loadingImg) || __instance == null || __instance._bgImage == null)
+                        return;
+
+                    var pd = PlayerData.Instance;
+                    if (pd == null)
+                        return;
+
+                    var sprite = LoadOrGetJacket(loadingImg);
+                    if (sprite != null)
+                    {
+                        __instance._bgImage.sprite = sprite;
+                        __instance._bgImage.color = Color.white;
+                        pd.Curtain = sprite;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Mod.Log.Warning($"[IngameSongInfoUI] 로딩 커튼 이미지 교체 실패(원본 이미지 유지): {ex.Message}");
+                    return;
                 }
 
                 // 긴 커스텀 곡 제목이 로딩 커튼에서 배지 위로 삐져나오며 스크롤되지 않도록 고정 + 자동 축소
@@ -632,20 +650,23 @@ namespace PIURiseCustom
         {
             private static void Postfix(BGAPlayerLoader __instance, Song currentSong)
             {
-                if (!ModConfig.CustomEnabled.Value || __instance == null || __instance._bgImage == null)
-                    return;
-
-                var pack = CustomPackManager.ResolveBySongId(currentSong?.ID);
-                string loadingImg = pack?.LoadingThumbnailPath ?? pack?.JacketPath;
-                if (string.IsNullOrEmpty(loadingImg))
-                    return;
-
-                var sprite = LoadOrGetJacket(loadingImg);
-                if (sprite != null)
+                try
                 {
-                    __instance._bgImage.sprite = sprite;
-                    __instance._bgImage.color = Color.white;
+                    if (!ModConfig.CustomEnabled.Value)
+                        return;
+                    var pack = CustomPackManager.ResolveBySongId(Util.SongId(currentSong));
+                    string loadingImg = pack?.LoadingThumbnailPath ?? pack?.JacketPath;
+                    if (string.IsNullOrEmpty(loadingImg) || __instance == null || __instance._bgImage == null)
+                        return;
+
+                    var sprite = LoadOrGetJacket(loadingImg);
+                    if (sprite != null)
+                    {
+                        __instance._bgImage.sprite = sprite;
+                        __instance._bgImage.color = Color.white;
+                    }
                 }
+                catch { }
             }
         }
 

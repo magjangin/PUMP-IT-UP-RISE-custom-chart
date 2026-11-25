@@ -316,7 +316,8 @@ namespace PIURiseCustom
                 return;
 
             bool needSway = SaveCustomConfig.NoteSway;
-            bool needChaos = SaveCustomConfig.NoteSpeedChaos && longNote == null;
+            // longNote는 일반 노트일 때 우리가 넘기는 관리 null이다 → Unity 비교(IL2CPP 호출) 대신 관리 비교(노트마다·프레임마다 불리는 경로)
+            bool needChaos = SaveCustomConfig.NoteSpeedChaos && longNote is null;
             bool needCover = SaveCustomConfig.Sudden > 0.01f || SaveCustomConfig.Hidden > 0.01f;
             bool needFade = SaveCustomConfig.FadeIn || SaveCustomConfig.FadeOut;
             bool needCustom = SaveCustomConfig.CustomNotes;
@@ -487,7 +488,7 @@ namespace PIURiseCustom
                         {
                             SetSpriteAlphaIfChanged(note._sp, alpha);
                             SetSpriteAlphaIfChanged(note._additive, alpha);
-                            if (longNote != null && longNote._renderers != null)
+                            if (longNote is not null && longNote._renderers != null)
                             {
                                 var rends = longNote._renderers;
                                 for (int i = 0; i < rends.Length; i++)

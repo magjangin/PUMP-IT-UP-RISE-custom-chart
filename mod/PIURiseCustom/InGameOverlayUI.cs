@@ -104,14 +104,14 @@ namespace PIURiseCustom
 
             try
             {
-                if (_judgeRoot == null) return;
+                if (_judgeRoot is null) return; // 판정마다 불리는 경로: 관리 비교
                 float maxMs = MathF.Max(120f, _maxWindowMs);
                 float norm = Math.Clamp(deltaMs / maxMs, -1f, 1f);
 
                 int slot = _tickHead;
                 _tickHead = (_tickHead + 1) % MaxTicks;
                 var t = _ticks[slot];
-                if (t.Img != null)
+                if (t.Img is not null)
                 {
                     Color col = grade switch
                     {
@@ -209,7 +209,8 @@ namespace PIURiseCustom
 
         private static void BuildCanvasIfNeeded()
         {
-            if (_canvasObj != null) return;
+            // _canvasObj는 우리가 만들고 우리가 null로 비운다(씬 전환·스테이지 종료 때 ClearStage). 매 프레임 Unity 비교 대신 관리 비교.
+            if (_canvasObj is not null) return;
             if (!SaveCustomConfig.EnableJudgmentBar && !SaveCustomConfig.EnableKeyViewer && !SaveCustomConfig.LaneCoverDebug)
                 return;
 
@@ -344,10 +345,10 @@ namespace PIURiseCustom
             try
             {
                 BuildCanvasIfNeeded();
-                if (_canvasObj == null) return;
+                if (_canvasObj is null) return;
 
                 // 판정바 틱 페이드 갱신
-                if (_judgeRoot != null)
+                if (_judgeRoot is not null)
                 {
                     float now = Time.unscaledTime;
                     for (int i = 0; i < MaxTicks; i++)
@@ -372,7 +373,7 @@ namespace PIURiseCustom
                 }
 
                 // 키뷰어 갱신 (실제 인게임 입력 시스템 GameInputManager 기반)
-                if (_kvRoot != null)
+                if (_kvRoot is not null)
                 {
                     var gim = GameInputManager.Instance;
                     if (gim != null)
@@ -387,7 +388,7 @@ namespace PIURiseCustom
                         for (int i = 0; i < 5; i++)
                         {
                             var box = _kvBoxes[i];
-                            if (box == null) continue;
+                            if (box is null) continue;
                             int state = IsLanePressed(gim, tables, i) ? 1 : 0;
                             if (state == _kvLastState[i]) continue;
                             _kvLastState[i] = state;
@@ -400,7 +401,7 @@ namespace PIURiseCustom
                 }
 
                 // LaneCoverDebug 진단선 갱신 (빨강=판정선, 하늘=서든/가림 경계, 연두=히든/페이드 끝)
-                if (_dbgRoot != null)
+                if (_dbgRoot is not null)
                 {
                     float judgeGuiY = NoteVisualPatches.LastJudgeScreenY;
                     float laneH = NoteVisualPatches.LastLaneScreenHeight;
