@@ -226,6 +226,10 @@ namespace PIURiseCustom
             int maxMeasure = 0;
             int wavKeyLen = 2; // 2자리(#WAV01) 기본, 3자리(#WAV001) 감지 시 자동 전환
             int extBpmKeyLen = 2; // #BPM01 / #BPM001 (채널 08 토큰 길이). #WAV 자릿수와 따로 본다
+            // 데이터 라인은 헤더를 다 읽은 뒤 처리한다(v0.3.13). 예전엔 한 번에 읽어서, 헤더가 데이터 뒤에 오거나 섞인 파일에서
+            // #WAV/#BPM 자릿수(토큰 길이)·확장 BPM 값·홀드 키음 이름을 아직 모르는 채로 앞쪽 데이터를 잘랐다.
+            // 헤더가 앞에 모인 보통 파일은 처리 순서가 같아 결과도 같다.
+            var dataLines = new List<string>();
 
             foreach (string rawLine in lines)
             {
@@ -240,7 +244,7 @@ namespace PIURiseCustom
                 // (#BPMxx / #WAVxx 키는 6~7번째 자리에 공백이 오고, #BPM 140은 5번째가 공백).
                 if (line.Length > 6 && line[6] == ':' && line.IndexOf(':') == 6)
                 {
-                    ParseBmsDataLine(line, ref maxMeasure, measureLen, extBpm, wavKeyLen, extBpmKeyLen, bpmChanges, rawNotes);
+                    dataLines.Add(line);
                     continue;
                 }
 
@@ -284,6 +288,9 @@ namespace PIURiseCustom
                     }
                 }
             }
+
+            foreach (string dataLine in dataLines)
+                ParseBmsDataLine(dataLine, ref maxMeasure, measureLen, extBpm, wavKeyLen, extBpmKeyLen, bpmChanges, rawNotes);
 
             if (rawNotes.Count == 0)
             {

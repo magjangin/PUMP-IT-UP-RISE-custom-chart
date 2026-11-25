@@ -258,7 +258,9 @@ namespace PIURiseCustom
             }
         }
 
-        // 0-3. DLC 상태 전수 등록 (Steamworks API 없이 11개 공식 DLC 직접 등록)
+        // 0-3. DLC 소유 목록 (Steamworks API 없이 로컬로 정한다)
+        //    오프라인 모드는 IsUseSteam=false라 Steam이 초기화되지 않으므로 원본(Steamworks 조회)을 부르지 않는다.
+        //    config.txt UnlockAllDlc=1이면 공식 DLC 11개를 소유 목록에 넣고, 0(기본)이면 빈 목록 = DLC 없음으로 처리한다(v0.3.13).
         [HarmonyPatch(typeof(SteamManager), nameof(SteamManager.CheckAllDLCStatus))]
         internal static class SteamManager_CheckAllDLCStatus_Patch
         {
@@ -275,12 +277,15 @@ namespace PIURiseCustom
                 try
                 {
                     var list = new Il2CppSystem.Collections.Generic.List<uint>();
-                    foreach (var id in _allDlcs)
+                    if (SaveCustomConfig.UnlockAllDlc)
                     {
-                        list.Add(id);
+                        foreach (var id in _allDlcs)
+                            list.Add(id);
                     }
                     __instance.dlcOwnedList = list;
-                    Mod.Log.Msg($"[OfflineStub] SteamManager.CheckAllDLCStatus 가로챔: 공식 DLC {_allDlcs.Length}개 소유권 등록");
+                    Mod.Log.Msg(SaveCustomConfig.UnlockAllDlc
+                        ? $"[OfflineStub] SteamManager.CheckAllDLCStatus 가로챔: 공식 DLC {_allDlcs.Length}개 소유 처리 (UnlockAllDlc=1)"
+                        : "[OfflineStub] SteamManager.CheckAllDLCStatus 가로챔: DLC 없음으로 처리 (UnlockAllDlc=0)");
                 }
                 catch (Exception ex)
                 {
@@ -290,7 +295,7 @@ namespace PIURiseCustom
             }
         }
 
-        // 0-4. DLC 설치/소유 질의 무조건 true
+        // 0-4. DLC 설치/소유 질의: 오프라인에서는 Steam이 없으므로 원본 대신 UnlockAllDlc 값을 돌려준다
         [HarmonyPatch(typeof(SteamManager), nameof(SteamManager.IsDLCInstalled))]
         internal static class SteamManager_IsDLCInstalled_Patch
         {
@@ -298,7 +303,7 @@ namespace PIURiseCustom
             {
                 if (!ModConfig.OfflineMode.Value)
                     return true;
-                __result = true;
+                __result = SaveCustomConfig.UnlockAllDlc;
                 return false;
             }
         }

@@ -26,6 +26,8 @@ namespace PIURiseCustom
         public static bool OfflineMode { get; private set; } = true;
         public static bool CustomEnabled { get; private set; } = true;
         public static float CustomChartOffsetMs { get; private set; } = 0f;
+        // 오프라인 모드에서 공식 DLC를 전부 소유한 것으로 처리할지(v0.3.13, 기본 꺼짐). 부팅 때만 적용.
+        public static bool UnlockAllDlc { get; private set; } = false;
 
         // ===== [플레이] =====
         public static bool AutoPlay { get; private set; } = false;
@@ -92,6 +94,8 @@ namespace PIURiseCustom
 OfflineMode=1
 CustomEnabled=1
 CustomChartOffsetMs=0
+# 오프라인 모드에서 공식 DLC 곡을 전부 소유한 것으로 처리 (0=끔: DLC 없음으로 처리, 1=켬). 게임을 다시 켜야 적용
+UnlockAllDlc=0
 
 # ===== [플레이] =====
 AutoPlay=0
@@ -203,6 +207,8 @@ LaneCoverDebug=0
                 if (map.TryGetValue("OfflineMode", out string v)) OfflineMode = BootOnly("OfflineMode", ParseBool(v, OfflineMode), OfflineMode);
                 if (map.TryGetValue("CustomEnabled", out v)) CustomEnabled = BootOnly("CustomEnabled", ParseBool(v, CustomEnabled), CustomEnabled);
                 if (map.TryGetValue("CustomChartOffsetMs", out v)) CustomChartOffsetMs = ParseFloat(v, CustomChartOffsetMs);
+                // DLC 소유 목록은 부팅 때(SteamManager.CheckAllDLCStatus) 정해지므로 실행 중 변경은 다음 실행부터
+                if (map.TryGetValue("UnlockAllDlc", out v)) UnlockAllDlc = BootOnly("UnlockAllDlc", ParseBool(v, UnlockAllDlc), UnlockAllDlc);
 
                 // [플레이]
                 if (map.TryGetValue("AutoPlay", out v)) AutoPlay = ParseBool(v, AutoPlay);
@@ -271,7 +277,7 @@ LaneCoverDebug=0
                 if (ModConfig.CustomChartOffsetMs != null) ModConfig.CustomChartOffsetMs.Value = CustomChartOffsetMs;
 
                 Mod.Log?.Msg(
-                    $"[Config] 로드 완료 — AutoPlay={AutoPlay}, AllPerfect={AllPerfect}, BlockSave={BlockSave}, MaxScore={MaxScore}, " +
+                    $"[Config] 로드 완료 — UnlockAllDlc={UnlockAllDlc}, AutoPlay={AutoPlay}, AllPerfect={AllPerfect}, BlockSave={BlockSave}, MaxScore={MaxScore}, " +
                     $"JudgeBar={EnableJudgmentBar}, KeyViewer={EnableKeyViewer}, Sway={NoteSway}, Chaos={NoteSpeedChaos}, " +
                     $"CustomNotes={CustomNotes}, Sudden={Sudden}%, Hidden={Hidden}%, FadeIn={FadeIn}, FadeOut={FadeOut}, Marathon={CustomMarathon}");
             }
