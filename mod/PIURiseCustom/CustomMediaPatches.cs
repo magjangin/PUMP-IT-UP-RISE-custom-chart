@@ -329,7 +329,10 @@ namespace PIURiseCustom
                     double fmodMs = sw.Elapsed.TotalMilliseconds;
 
                     Mod.Log.Msg($"[CustomBGM] '{pack.Title}' 오디오 주입: {Path.GetFileName(audioPath)} (prefix={prefix}, song={name}) — {source}, FMOD 열기({mode}) {fmodMs:0.0}ms");
-                    callback?.Invoke();
+                    // 게임 콜백 예외는 따로 잡는다(v0.3.14). 예전엔 아래 catch로 떨어져 return true → 원본 LoadMusicSound가
+                    // 이미 올린 커스텀 음원을 템플릿(공식 곡) 음원으로 다시 덮어쓰고 콜백을 한 번 더 불렀다.
+                    try { callback?.Invoke(); }
+                    catch (Exception cbEx) { Mod.Log.Warning($"[CustomBGM] 로드 완료 콜백 처리 중 예외(커스텀 음원 유지): {cbEx.Message}"); }
                     return false;
                 }
                 catch (Exception ex)
@@ -405,7 +408,9 @@ namespace PIURiseCustom
                             if (handled) return;
                             handled = true;
                             Mod.Log.Warning($"[CustomBGA] VideoPlayer 오류: {msg}");
-                            __instance.OnVideoError(s, msg);
+                            // 네이티브 이벤트에서 불리는 관리 델리게이트라 예외가 새면 Il2CppInterop이 삼키거나 스택만 찍는다 → 직접 남긴다
+                            try { __instance.OnVideoError(s, msg); }
+                            catch (Exception ex) { Mod.Log.Warning($"[CustomBGA] OnVideoError 처리 중 예외: {ex.Message}"); }
                         }));
                     var onPrepared = Il2CppInterop.Runtime.DelegateSupport.ConvertDelegate<VideoPlayer.EventHandler>(
                         new Action<VideoPlayer>(s =>
@@ -413,7 +418,8 @@ namespace PIURiseCustom
                             if (handled) return;
                             handled = true;
                             Mod.Log.Msg($"[CustomBGA] VideoPlayer 준비 완료 ({prepareWatch.Elapsed.TotalMilliseconds:0}ms)");
-                            __instance.OnBGAPrepared(s);
+                            try { __instance.OnBGAPrepared(s); }
+                            catch (Exception ex) { Mod.Log.Warning($"[CustomBGA] OnBGAPrepared 처리 중 예외: {ex.Message}"); }
                         }));
                     vp.add_errorReceived(onError);
                     vp.add_prepareCompleted(onPrepared);

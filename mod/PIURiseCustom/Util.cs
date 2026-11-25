@@ -34,7 +34,13 @@ namespace PIURiseCustom
         // UTF-8(BOM 유무) → 실패 시 CP949(EUC-KR) → Shift-JIS → Latin1 순으로 시도.
         // 한국어 info.txt·BMS 헤더가 EUC-KR로 저장돼도 제목/아티스트가 깨지지 않게 한다.
         private static readonly UTF8Encoding StrictUtf8 = new(false, true);
-        private static bool _codePagesRegistered;
+        // 차트는 스레드 풀(CustomChartParsers.Prefetch)에서도 디코딩한다. 예전 "bool 플래그 → 등록" 방식은 한 스레드가 플래그만 세우고
+        // 등록하기 전에 다른 스레드가 CP949를 찾으면 실패해 Latin1로 떨어져(제목·키음 이름 깨짐) 경쟁이 있었다 → 한 번만, 잠금으로 등록(v0.3.14).
+        private static readonly Lazy<bool> _codePagesRegistered = new(() =>
+        {
+            try { Encoding.RegisterProvider(CodePagesEncodingProvider.Instance); return true; }
+            catch { return false; }
+        }, System.Threading.LazyThreadSafetyMode.ExecutionAndPublication);
 
         public static string[] ReadAllLinesSmart(string path)
         {
@@ -105,11 +111,7 @@ namespace PIURiseCustom
 
         private static Encoding GetCodePage(int codePage)
         {
-            if (!_codePagesRegistered)
-            {
-                _codePagesRegistered = true;
-                try { Encoding.RegisterProvider(CodePagesEncodingProvider.Instance); } catch { }
-            }
+            _ = _codePagesRegistered.Value;
             // 엄격 디코더: CP949로 해석 불가능한 바이트가 있으면 다음 후보(Shift-JIS)로 넘어간다
             return Encoding.GetEncoding(codePage, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
         }

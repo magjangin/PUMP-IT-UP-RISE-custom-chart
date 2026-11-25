@@ -331,7 +331,9 @@ namespace PIURiseCustom
                         nm._token = fakeJwt;
                     }
 
-                    callback?.Invoke();
+                    // 콜백 예외가 나도 DLC 목록 보강은 해야 한다(v0.3.14). 예전엔 바깥 catch로 떨어져 DLCEntrys가 null로 남았다
+                    // (멀티 방 생성 창 ESC/ENTER 먹통의 원인, AGENTS.md §5). 다른 진입점(InitMultiCon 등)에서도 다시 보강한다.
+                    InvokeGuarded(callback, "CheckTicket");
                     EnsureOfflineDlcEntries("CheckTicket");
                 }
                 catch (Exception ex)

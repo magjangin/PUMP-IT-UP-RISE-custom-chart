@@ -431,15 +431,17 @@ namespace PIURiseCustom
         {
             try
             {
-                if (!ModConfig.CustomEnabled.Value || box == null || box._eyecatchImage == null)
+                // 리스트 스크롤마다 박스 수 × 2번 불린다. 공식 곡은 관리 사전 조회로 먼저 거르고,
+                // Unity 객체 비교(_eyecatchImage == null, IL2CPP 호출)는 커스텀 곡일 때만 한다(v0.3.14).
+                if (!ModConfig.CustomEnabled.Value || box is null)
                     return;
 
                 var content = box.Content;
-                if (content == null)
+                if (content is null)
                     return;
 
                 var pack = CustomPackManager.ResolveBySongId(Util.SongId(content.Song));
-                if (pack == null || string.IsNullOrEmpty(pack.JacketPath))
+                if (pack == null || string.IsNullOrEmpty(pack.JacketPath) || box._eyecatchImage == null)
                     return;
 
                 var sprite = LoadOrGetJacket(pack.JacketPath);

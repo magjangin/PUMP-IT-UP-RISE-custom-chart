@@ -2,7 +2,7 @@
 
 **PUMP IT UP RISE** (Steam / Unity 2022.3 IL2CPP)용 MelonLoader 기반 **커스텀 차트 · 미디어 주입 · 오프라인 모드** 통합 프로젝트입니다.
 
-- **현재 버전:** `v0.3.13`
+- **현재 버전:** `v0.3.14`
 - **제작자:** 화영왕 (`magjangin`)
 - **대상 게임:** PUMP IT UP RISE (Steam AppID `2756930`, Build `26399668` 기준 실기 검증)
 - **로더:** MelonLoader `0.7.3` (`net6.0` / IL2CPP)
@@ -71,9 +71,12 @@ Sixtar Gate: STARTRAIL / DEFLATE 통합 규격과 호환되는 설정 파일을 
    │  ├─ video.mp4        # (선택) BGA (.mp4 / .webm)
    │  └─ cover.png        # (선택) 자켓 (cover/jacket/Thumbnail 등)
    └─ <앨범 폴더>/
+      ├─ cover.png        # (선택) 앨범 표지·설명 txt가 있어도 앨범으로 인식 (v0.3.14)
       └─ <곡 폴더>/
          └─ ...
 ```
+
+앨범 폴더 자체에 차트·음원(.ogg/.mp3/.flac)·영상을 두면 앨범이 아니라 곡 폴더로 읽힙니다.
 
 ### `info.txt` 작성 예시 (선택)
 
@@ -150,6 +153,7 @@ dotnet build "mod/PIURiseCustom/PIURiseCustom.csproj" -c Release -p:GamePath="C:
 | CUSTOM 탭이 안 보임 | `hwa/`에 인식된 곡이 없음 | 곡 폴더에 차트·음원·이미지 중 하나가 있는지 확인 |
 
 - `config.txt`에서 줄을 지우면 그 항목은 다음 곡부터 기본값으로 돌아갑니다(v0.3.6).
+- 예전 버전이 만든 `config.txt`에 새 버전의 설정 항목이 없으면 부팅 때 파일 끝에 기본값으로 덧붙입니다(v0.3.14, 로그 `[Config] … 새 설정 항목 N개 … 추가`). 기존 줄은 건드리지 않습니다.
 - 커스텀 곡 번호(990001…)는 `SaveCustomKey/song_ids.txt`에 기억돼, 폴더를 추가·삭제해도 다른 곡 번호가 밀리지 않습니다. 이 파일을 지우면 다음 실행 때 스캔 순서대로 다시 매깁니다.
 
 ---
@@ -159,7 +163,7 @@ dotnet build "mod/PIURiseCustom/PIURiseCustom.csproj" -c Release -p:GamePath="C:
 ```text
 .
 ├─ mod/
-│  ├─ PIURiseCustom/      # 통합 커스텀 차트 · 오프라인 주력 모드 (v0.3.13)
+│  ├─ PIURiseCustom/      # 통합 커스텀 차트 · 오프라인 주력 모드 (v0.3.14)
 │  └─ PIURiseSkeleton/    # 읽기 전용 판정 관찰용 최소 스켈레톤 모드 (PIURiseCustom과 함께 설치하지 말 것)
 ├─ docs/
 │  ├─ hooks.md            # 후킹 타깃, 전체 패치 목록, 업데이트 점검 절차

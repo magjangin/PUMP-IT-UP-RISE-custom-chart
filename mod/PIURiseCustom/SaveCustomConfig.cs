@@ -163,6 +163,10 @@ LaneCoverDebug=0
                     File.WriteAllText(ConfigPath, DefaultTemplate, new UTF8Encoding(false));
                     Mod.Log?.Msg($"[Config] 기본 설정 파일 생성: {ConfigPath}");
                 }
+                else
+                {
+                    AppendMissingKeys();
+                }
             }
             catch (Exception ex)
             {
@@ -170,6 +174,87 @@ LaneCoverDebug=0
             }
 
             ReloadIfChanged(force: true);
+        }
+
+        /// <summary>
+        /// 예전 버전이 만든 config.txt에는 그 뒤에 생긴 항목(예: v0.3.13 UnlockAllDlc)이 없어 사용자가 설정이 있는 줄도 모른다.
+        /// 부팅 때 템플릿에 있는데 파일에 없는 키를 파일 끝에 <b>기본값</b>으로 덧붙인다(v0.3.14). 값이 기본값이라 동작은 바뀌지 않고,
+        /// 기존 줄·주석·순서는 건드리지 않는다(덧붙이기만). UTF-16 파일은 건드리지 않고, UTF-8이 아닌 파일(CP949 등)에는
+        /// 인코딩이 섞이지 않게 ASCII 줄(키=값)만 붙인다.
+        /// </summary>
+        private static void AppendMissingKeys()
+        {
+            try
+            {
+                byte[] bytes = File.ReadAllBytes(ConfigPath);
+                if (bytes.Length >= 2 && ((bytes[0] == 0xFF && bytes[1] == 0xFE) || (bytes[0] == 0xFE && bytes[1] == 0xFF)))
+                    return;
+
+                bool utf8 = bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF;
+                if (!utf8)
+                {
+                    try { new UTF8Encoding(false, true).GetString(bytes); utf8 = true; }
+                    catch (DecoderFallbackException) { }
+                }
+
+                string text = Util.DecodeSmart(bytes);
+                var fileMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                ParseLines(text.Split(new[] { "\r\n", "\n", "\r" }, StringSplitOptions.None), fileMap);
+
+                // 템플릿에서 키마다 바로 위의 설명 주석(섹션 머리 "# =====" 제외)을 같이 가져온다
+                var missing = new List<string>();
+                var block = new List<string>();
+                var pendingComments = new List<string>();
+                foreach (string raw in SplitTemplate())
+                {
+                    string line = raw.Trim();
+                    if (line.Length == 0 || line.StartsWith("# =====", StringComparison.Ordinal))
+                    {
+                        pendingComments.Clear();
+                        continue;
+                    }
+                    if (line.StartsWith("#"))
+                    {
+                        pendingComments.Add(line);
+                        continue;
+                    }
+                    int sep = line.IndexOf('=');
+                    if (sep <= 0) { pendingComments.Clear(); continue; }
+                    string key = line.Substring(0, sep).Trim();
+                    if (!fileMap.ContainsKey(key))
+                    {
+                        missing.Add(key);
+                        if (utf8) block.AddRange(pendingComments);
+                        block.Add(line);
+                    }
+                    pendingComments.Clear();
+                }
+                if (missing.Count == 0)
+                    return;
+
+                string nl = text.Contains("\r\n") ? "\r\n" : "\n";
+                var sb = new StringBuilder();
+                if (text.Length > 0 && !text.EndsWith("\n") && !text.EndsWith("\r"))
+                    sb.Append(nl);
+                sb.Append(nl);
+                sb.Append(utf8
+                    ? $"# ===== [v{Mod.Version} 자동 추가: 이 config.txt에 없던 새 설정 항목 (기본값)] ====="
+                    : $"# ===== [Added by PIURiseCustom v{Mod.Version}: new settings (defaults)] =====");
+                sb.Append(nl);
+                foreach (string l in block)
+                    sb.Append(l).Append(nl);
+
+                using (var fs = new FileStream(ConfigPath, FileMode.Append, FileAccess.Write, FileShare.Read))
+                {
+                    byte[] add = new UTF8Encoding(false).GetBytes(sb.ToString());
+                    fs.Write(add, 0, add.Length);
+                }
+                Mod.Log?.Msg($"[Config] config.txt에 없던 새 설정 항목 {missing.Count}개를 파일 끝에 기본값으로 추가: {string.Join(", ", missing)}");
+            }
+            catch (Exception ex)
+            {
+                Mod.Log?.Warning($"[Config] 새 설정 항목 덧붙이기 실패(기본값으로 동작): {ex.Message}");
+            }
         }
 
         public static void ReloadIfChanged(bool force = false)

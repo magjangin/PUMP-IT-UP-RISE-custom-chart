@@ -126,19 +126,30 @@ namespace PIURiseCustom
                 string dirName = Path.GetFileName(dir);
                 var files = GetFilesSorted(dir);
 
-                if (IsSongFolder(files))
+                // 차트·음원·영상이 있으면 곡 폴더. 이미지·txt만 있으면 앨범 표지·설명일 수 있으므로 하위 곡 폴더가 있는지 먼저 본다(v0.3.14).
+                // 예전엔 앨범 폴더에 cover.png 하나만 있어도 곡 폴더로 보고 continue해, 그 앨범의 곡이 전부 빠지고
+                // 표지만 있는 가짜 곡이 목록에 올라갔다.
+                if (HasStrongSongFile(files))
                 {
                     TryAdd(dir, dirName, null, files, catalogUnlessOverride: true);
                     continue;
                 }
 
                 // 하위 폴더에 곡이 있으면 앨범 폴더로 간주
+                bool albumHasSongs = false;
                 foreach (string subDir in GetDirectoriesSorted(dir))
                 {
                     var subFiles = GetFilesSorted(subDir);
                     if (IsSongFolder(subFiles))
+                    {
+                        albumHasSongs = true;
                         TryAdd(subDir, Path.GetFileName(subDir), dirName, subFiles, catalogUnlessOverride: false);
+                    }
                 }
+
+                // 하위 곡이 없고 이미지·txt만 있는 폴더는 예전처럼 곡 폴더(자켓만 있는 뼈대 테스트 폴더 등)
+                if (!albumHasSongs && IsSongFolder(files))
+                    TryAdd(dir, dirName, null, files, catalogUnlessOverride: true);
             }
 
             if (failed > 0)
@@ -284,6 +295,18 @@ namespace PIURiseCustom
                 if (ImageExts.Contains(ext)) return true;
                 if (ext == ".ogg" || ext == ".mp3" || ext == ".flac") return true;
                 if (ext == ".txt" && !name.Equals("readme.txt", StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            return false;
+        }
+
+        // 곡 폴더임이 확실한 파일(차트·영상·음원 .ogg/.mp3/.flac). 이미지·txt는 앨범 폴더에도 있을 수 있어 뺀다.
+        private static bool HasStrongSongFile(string[] files)
+        {
+            foreach (string f in files)
+            {
+                string ext = Path.GetExtension(f)?.ToLowerInvariant();
+                if (ChartExts.Contains(ext) || VideoExts.Contains(ext)) return true;
+                if (ext == ".ogg" || ext == ".mp3" || ext == ".flac") return true;
             }
             return false;
         }
