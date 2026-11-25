@@ -2,7 +2,7 @@
 
 **PUMP IT UP RISE** (Steam / Unity 2022.3 IL2CPP)용 MelonLoader 기반 **커스텀 차트 · 미디어 주입 · 오프라인 모드** 통합 프로젝트입니다.
 
-- **현재 버전:** `v0.3.12`
+- **현재 버전:** `v0.3.13`
 - **제작자:** 화영왕 (`magjangin`)
 - **대상 게임:** PUMP IT UP RISE (Steam AppID `2756930`, Build `26399668` 기준 실기 검증)
 - **로더:** MelonLoader `0.7.3` (`net6.0` / IL2CPP)
@@ -33,7 +33,7 @@
 - 온라인 모드(`OfflineMode=0`)에서도 커스텀 곡·`AutoPlay`·`AllPerfect` 플레이의 결과 전송은 서버로 보내지 않습니다(`[OnlineGuard]`).
 - `OfflineMode`·`CustomEnabled` 변경은 게임을 다시 시작해야 적용됩니다(다른 설정은 다음 곡부터 핫리로드).
 - 응답 형식을 모르는 서버 명령은 빈 객체 `{}`로 응답하고 로그에 한 번 경고합니다(`[OfflineStub] 응답 형식 미확인 명령`).
-- 오프라인 모드에서는 Steam 초기화(`SteamManager.InitManager`)와 DLC 소유 확인(`CheckAllDLCStatus`/`IsDLCInstalled`)도 로컬에서 처리합니다(v0.3.9, 서버·Steam 종료 대비 보존 목적). `OfflineMode=0`이면 Steam·DLC 확인은 게임 원본 그대로입니다. 오프라인 모드에서는 Steam 클라이언트를 켜지 않아도 게임이 실행됩니다(실기 확인).
+- 오프라인 모드에서는 Steam 초기화(`SteamManager.InitManager`)와 DLC 소유 확인(`CheckAllDLCStatus`/`IsDLCInstalled`)도 로컬에서 처리합니다(v0.3.9, 서버·Steam 종료 대비 보존 목적). DLC는 `UnlockAllDlc=1`일 때만 소유로 처리하고 기본값(0)은 DLC 없음입니다(v0.3.13). `OfflineMode=0`이면 Steam·DLC 확인은 게임 원본 그대로입니다. 오프라인 모드에서는 Steam 클라이언트를 켜지 않아도 게임이 실행됩니다(실기 확인).
 
 ### 5. 플레이 옵션 & 인게임 오버레이 (`SaveCustomKey/config.txt`)
 Sixtar Gate: STARTRAIL / DEFLATE 통합 규격과 호환되는 설정 파일을 지원하며, **수정 후 저장하면 다음 곡 진입 시 자동 핫리로드**됩니다.
@@ -96,6 +96,7 @@ double: 18, 22
 | `OfflineMode` | `1` | 게임 서버 통신 차단 및 로컬 스텁 사용 (**재시작 필요**) |
 | `CustomEnabled` | `1` | 커스텀 곡·미디어 주입 활성화 (**재시작 필요**) |
 | `CustomChartOffsetMs` | `0` | 커스텀 차트 공통 싱크 오프셋(ms) |
+| `UnlockAllDlc` | `0` | 오프라인 모드에서 공식 DLC를 소유한 것으로 처리 (**재시작 필요**, `0`=DLC 없음) |
 | `AutoPlay` / `AllPerfect` | `0` | 오토플레이 / 올퍼펙트 판정 (활성 시 온라인 결과 전송 보류) |
 | `BlockSave` | `1` | 로컬 클리어 기록 저장 차단 (옵션·키설정은 정상 저장) |
 | `MaxScore` | `1000000` | 결과 화면 점수 표시 기준치 |
@@ -158,7 +159,7 @@ dotnet build "mod/PIURiseCustom/PIURiseCustom.csproj" -c Release -p:GamePath="C:
 ```text
 .
 ├─ mod/
-│  ├─ PIURiseCustom/      # 통합 커스텀 차트 · 오프라인 주력 모드 (v0.3.12)
+│  ├─ PIURiseCustom/      # 통합 커스텀 차트 · 오프라인 주력 모드 (v0.3.13)
 │  └─ PIURiseSkeleton/    # 읽기 전용 판정 관찰용 최소 스켈레톤 모드 (PIURiseCustom과 함께 설치하지 말 것)
 ├─ docs/
 │  ├─ hooks.md            # 후킹 타깃, 전체 패치 목록, 업데이트 점검 절차
