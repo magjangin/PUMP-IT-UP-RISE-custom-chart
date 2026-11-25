@@ -210,6 +210,103 @@ namespace PIURiseCustom
             }
         }
 
+        // ===== 자켓·로딩 썸네일 백그라운드 디코딩 (v0.3.12) =====
+        // ImageConversion.LoadImage는 메인 스레드에서 PNG를 동기로 푼다(실곡 1024x1024 자켓 약 30ms, 1888x1056 로딩 썸네일 약 60ms —
+        // 같은 파일을 관리 디코더로 푼 시간). 선곡 리스트가 처음 그려질 때·곡 시작 때 그만큼 프레임이 멈췄다.
+        // PNG는 PngDecoder로 스레드 풀에서 RGBA까지 풀어 두고, 메인 스레드는 LoadRawTextureData(복사)+Apply만 한다.
+        // 디코딩 결과는 한 번 쓰면 버린다(이후는 _jacketCache의 Sprite). PNG가 아니거나 디코더가 거부하면 예전 LoadImage 경로.
+        // 모든 진입점(Prefetch*/LoadOrGetJacket)은 메인 스레드에서만 불린다 → _decodePending에 잠금이 필요 없다.
+        private const long JacketPrefetchBudgetBytes = 96L * 1024 * 1024; // 아직 안 쓴 디코딩 결과(RGBA)의 합 상한
+        private static readonly Dictionary<string, (System.Threading.Tasks.Task<DecodedImage> Task, long Bytes)> _decodePending =
+            new(StringComparer.OrdinalIgnoreCase);
+        private static long _decodePendingBytes;
+        private static string _hoverPrefetchPath; // 커서 진입으로 미리 푼 로딩 썸네일(곡을 안 고르고 넘어가면 버린다)
+
+        /// <summary>부팅 때: 목록에 나올 커스텀 곡 자켓을 백그라운드에서 미리 푼다(메인 스레드 전용 호출).</summary>
+        internal static void PrefetchCatalogJackets()
+        {
+            if (!ModConfig.CustomEnabled.Value || !ModConfig.BackgroundImageDecode.Value)
+                return;
+            int started = 0;
+            foreach (var p in CustomPackManager.CatalogSongs)
+                if (PrefetchImage(p.JacketPath)) started++;
+            if (started > 0)
+                Mod.Log.Msg($"[CustomJacket] 자켓 {started}개 백그라운드 디코딩 시작 (대기 중 RGBA {_decodePendingBytes / 1024} KB, 상한 {JacketPrefetchBudgetBytes / (1024 * 1024)} MB)");
+        }
+
+        /// <summary>선곡 커서가 곡에 올라갔을 때: 곡 시작 때 쓸 로딩 썸네일을 미리 푼다. 직전 곡의 안 쓴 결과는 버린다.</summary>
+        internal static void PrefetchHoverImage(string path)
+        {
+            if (!ModConfig.BackgroundImageDecode.Value || string.IsNullOrEmpty(path))
+                return;
+            if (_hoverPrefetchPath != null && !string.Equals(_hoverPrefetchPath, path, StringComparison.OrdinalIgnoreCase))
+                TakePending(_hoverPrefetchPath); // 버린다(작업이 끝나면 결과는 GC가 거둔다)
+            if (PrefetchImage(path))
+                _hoverPrefetchPath = path;
+        }
+
+        private static bool PrefetchImage(string path)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(path) || !path.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+                    return false;
+                if (_decodePending.ContainsKey(path) || _jacketFailed.Contains(path) || _jacketCache.ContainsKey(path))
+                    return false;
+                if (!CustomPackManager.TryReadImageDimensions(path, out int w, out int h) || w <= 0 || h <= 0)
+                    return false;
+                long bytes = (long)w * h * 4;
+                if (_decodePendingBytes + bytes > JacketPrefetchBudgetBytes)
+                    return false; // 상한을 넘는 것은 쓸 때 예전 방식으로 푼다
+
+                var task = System.Threading.Tasks.Task.Run(() =>
+                {
+                    try { return PngDecoder.TryDecode(File.ReadAllBytes(path)); }
+                    catch { return null; }
+                });
+                _decodePending[path] = (task, bytes);
+                _decodePendingBytes += bytes;
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static System.Threading.Tasks.Task<DecodedImage> TakePending(string path)
+        {
+            if (!_decodePending.TryGetValue(path, out var e))
+                return null;
+            _decodePending.Remove(path);
+            _decodePendingBytes -= e.Bytes;
+            if (string.Equals(_hoverPrefetchPath, path, StringComparison.OrdinalIgnoreCase))
+                _hoverPrefetchPath = null;
+            return e.Task;
+        }
+
+        private static Texture2D TextureFromDecoded(DecodedImage img)
+        {
+            var tex = new Texture2D(img.Width, img.Height, TextureFormat.RGBA32, false);
+            var handle = System.Runtime.InteropServices.GCHandle.Alloc(img.Rgba, System.Runtime.InteropServices.GCHandleType.Pinned);
+            try
+            {
+                // Unity가 즉시 자기 버퍼로 복사하므로 고정은 이 호출 동안만 필요하다(Il2Cpp 배열을 따로 만들지 않는다)
+                tex.LoadRawTextureData(handle.AddrOfPinnedObject(), img.Rgba.Length);
+            }
+            catch
+            {
+                UnityEngine.Object.Destroy(tex);
+                throw;
+            }
+            finally
+            {
+                handle.Free();
+            }
+            tex.Apply(false, false); // LoadImage(…, markNonReadable: false)와 같게 읽기 가능 상태 유지
+            return tex;
+        }
+
         internal static Sprite LoadOrGetJacket(string jacketPath)
         {
             if (string.IsNullOrEmpty(jacketPath))
@@ -222,17 +319,51 @@ namespace PIURiseCustom
             if (_jacketFailed.Contains(jacketPath) || !File.Exists(jacketPath))
                 return null;
 
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            Texture2D tex = null;
+            string how = null;
+
+            // 1) 백그라운드에서 미리 푼 결과가 있으면 원시 픽셀만 올린다
+            var pending = TakePending(jacketPath);
+            if (pending != null)
+            {
+                try
+                {
+                    bool wasDone = pending.IsCompleted;
+                    var img = pending.GetAwaiter().GetResult();
+                    if (img != null)
+                    {
+                        double waitMs = sw.Elapsed.TotalMilliseconds;
+                        tex = TextureFromDecoded(img);
+                        double uploadMs = sw.Elapsed.TotalMilliseconds - waitMs;
+                        how = wasDone ? $"미리 디코딩됨, 업로드 {uploadMs:0.0}ms"
+                                      : $"미리 디코딩 대기 {waitMs:0.0}ms + 업로드 {uploadMs:0.0}ms";
+                    }
+                }
+                catch (Exception ex)
+                {
+                    tex = null;
+                    Mod.Log.Warning($"[CustomJacket] 미리 디코딩 결과 사용 실패 → 기존 방식으로 다시 읽음 ({Path.GetFileName(jacketPath)}): {ex.Message}");
+                }
+            }
+
             try
             {
-                byte[] bytes = File.ReadAllBytes(jacketPath);
-                var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-                bool ok = ImageConversion.LoadImage(tex, new Il2CppStructArray<byte>(bytes), false);
-                if (!ok)
+                // 2) 예전 방식: 메인 스레드에서 Unity가 직접 디코딩 (JPEG, 미리 풀지 않은 파일, 디코더가 거부한 PNG)
+                if (tex is null)
                 {
-                    UnityEngine.Object.Destroy(tex);
-                    _jacketFailed.Add(jacketPath);
-                    Mod.Log.Warning($"[CustomJacket] ImageConversion.LoadImage 실패 ({jacketPath}, {bytes.Length} bytes) — 재시작 전까지 다시 시도하지 않음");
-                    return null;
+                    sw.Restart();
+                    byte[] bytes = File.ReadAllBytes(jacketPath);
+                    tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                    bool ok = ImageConversion.LoadImage(tex, new Il2CppStructArray<byte>(bytes), false);
+                    if (!ok)
+                    {
+                        UnityEngine.Object.Destroy(tex);
+                        _jacketFailed.Add(jacketPath);
+                        Mod.Log.Warning($"[CustomJacket] ImageConversion.LoadImage 실패 ({jacketPath}, {bytes.Length} bytes) — 재시작 전까지 다시 시도하지 않음");
+                        return null;
+                    }
+                    how = $"메인 스레드 디코딩 {sw.Elapsed.TotalMilliseconds:0.0}ms";
                 }
 
                 var sprite = Sprite.Create(
@@ -244,7 +375,7 @@ namespace PIURiseCustom
                 sprite.hideFlags = HideFlags.DontUnloadUnusedAsset;
                 tex.hideFlags = HideFlags.DontUnloadUnusedAsset;
                 _jacketCache[jacketPath] = sprite;
-                Mod.Log.Msg($"[CustomJacket] 자켓 로드 성공: {Path.GetFileName(jacketPath)} ({tex.width}x{tex.height})");
+                Mod.Log.Msg($"[CustomJacket] 자켓 로드 성공: {Path.GetFileName(jacketPath)} ({tex.width}x{tex.height}) — {how}");
                 return sprite;
             }
             catch (Exception ex)

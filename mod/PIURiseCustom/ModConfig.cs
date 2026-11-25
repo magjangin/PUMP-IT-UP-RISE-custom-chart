@@ -18,6 +18,7 @@ namespace PIURiseCustom
         public static MelonPreferences_Entry<bool> CaptureOnlineResponses;
         public static MelonPreferences_Entry<bool> OverridePreviewAudio;
         public static MelonPreferences_Entry<bool> PreviewAudioStream;
+        public static MelonPreferences_Entry<bool> BackgroundImageDecode;
         public static MelonPreferences_Entry<float> CustomChartOffsetMs;
         public static MelonPreferences_Entry<string> CustomRootFolder;
 
@@ -57,6 +58,11 @@ namespace PIURiseCustom
                 "선곡 미리듣기 BGM을 스트리밍으로 재생",
                 "true: 미리듣기는 FMOD 스트림(CREATESTREAM)으로 열어 곡 전체를 PCM으로 미리 풀지 않는다(커서 이동 끊김 감소). " +
                 "false: 게임 기본값(CREATESAMPLE, 전체 디코딩)과 같게 연다. 본게임 BGM은 판정 싱크를 위해 항상 게임 기본값을 쓴다.");
+
+            BackgroundImageDecode = _cat.CreateEntry("BackgroundImageDecode", true,
+                "커스텀 자켓·로딩 썸네일 PNG를 백그라운드에서 미리 디코딩",
+                "true: 부팅 때 자켓, 곡에 커서를 올릴 때 로딩 썸네일을 스레드 풀에서 풀어 두고 메인 스레드는 픽셀 업로드만 한다(v0.3.12). " +
+                "false: 예전처럼 처음 쓸 때 메인 스레드에서 ImageConversion.LoadImage로 디코딩한다.");
 
             CustomChartOffsetMs = _cat.CreateEntry("CustomChartOffsetMs", 0f,
                 "커스텀 차트 공통 싱크 오프셋 (ms)");

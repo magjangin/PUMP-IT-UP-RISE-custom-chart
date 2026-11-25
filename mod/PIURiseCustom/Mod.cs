@@ -12,7 +12,7 @@ namespace PIURiseCustom
 {
     public class Mod : MelonMod
     {
-        public const string Version = "0.3.11";
+        public const string Version = "0.3.12";
 
         internal static MelonLogger.Instance Log;
         internal static HarmonyLib.Harmony PatchHarmony;
@@ -29,6 +29,9 @@ namespace PIURiseCustom
             ModConfig.Init();
             SaveCustomConfig.InitAndLoad();
             CustomPackManager.EnsureSampleFoldersAndScan();
+            // 자켓 PNG를 패치 적용(약 1초) 동안 스레드 풀에서 미리 푼다 — 선곡 리스트가 처음 그려질 때 메인 스레드 디코딩 제거(v0.3.12)
+            try { SongTableInjectorPatches.PrefetchCatalogJackets(); }
+            catch (System.Exception ex) { Log.Warning($"[CustomJacket] 자켓 미리 디코딩 시작 실패(기존 방식으로 동작): {ex.Message}"); }
 
             SafePatcher.ApplyAll(HarmonyInstance);
 

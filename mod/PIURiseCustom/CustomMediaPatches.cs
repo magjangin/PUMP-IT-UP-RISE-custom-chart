@@ -171,6 +171,8 @@ namespace PIURiseCustom
                 PrefetchAudio(pack.PreviewBgmPath ?? pack.BgmPath);
             if (!string.IsNullOrEmpty(pack.ChartPath))
                 CustomChartParsers.Prefetch(pack.ChartPath, ModConfig.CustomChartOffsetMs.Value);
+            // 곡을 고르면 로딩 커튼에 쓸 16:9 썸네일(없으면 자켓)도 미리 풀어 둔다(v0.3.12)
+            SongTableInjectorPatches.PrefetchHoverImage(pack.LoadingThumbnailPath ?? pack.JacketPath);
         }
 
         private static string GetCurrentPlayType()
