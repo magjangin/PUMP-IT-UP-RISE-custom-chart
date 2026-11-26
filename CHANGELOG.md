@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.16] - 2026-11-26
+
+### 성능
+- **선곡 리스트 박스 자켓 중복 대입 및 UI 리빌드 차단**: 선곡 화면에서 스크롤할 때 `MSListBox.UpdateDisplayContent` 및 `UpdateLevels` Postfix가 호출되는데, 이미 같은 자켓 스프라이트가 적용되어 있는 셀(`cur.Pointer == sprite.Pointer`)인 경우 프로퍼티 재대입과 UI 리빌드를 건너뛰도록 최적화했습니다. 빠른 스크롤 시 발생하는 불필요한 Unity 네이티브 호출을 완전히 제거했습니다.
+
+### 버그 수정 및 안정성
+- **BMS 파서 안정 정렬(Stable Sort) 보장**: C# `List<T>.Sort`는 불안정 정렬이라, 같은 박(Beat)에 여러 노트나 홀드 시작/끝이 위치할 때 순서가 뒤집힐 수 있었습니다. `BmsNote`에 파일 출현 순서 `Order`를 기록하고, 박이 같으면 `Order`로 정렬하도록 2차 비교를 추가하여 동시치기 및 홀드 노트의 페어링 순서를 100% 보존합니다.
+- **BGA VideoPlayer 핸들러 수명 주기 완전 격리**: 인게임 BGA 재생 시 붙였던 `VideoPlayer` 델리게이트가 씬 전환 또는 곡 종료 후에도 남아 있을 위험을 제거하기 위해, `CustomMediaPatches.ClearStage()`를 추가하고 씬 로드(`OnSceneWasLoaded`) 및 스테이지 종료(`SaveResult`, `OnDisable`, `OnDestroy`) 시점에 명시적으로 핸들러를 분리(`Detach`)합니다.
+
+### 업데이트 내성
+- **오프라인 모드 질의 일관성 정합**: `OfflineStubPatches` 내부 16곳의 오프라인 상태 확인을 `SaveCustomConfig.OfflineMode` 기반의 `IsOffline` 속성으로 일원화하여 부팅 전용 설정값 반영의 일관성과 안전성을 강화했습니다.
+
+### 검증
+- Release `-warnaserror` 빌드 경고 0 / 오류 0 (스켈레톤 포함).
+
 ## [0.3.15] - 2026-11-26
 
 ### 업데이트 내성

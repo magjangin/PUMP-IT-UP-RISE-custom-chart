@@ -44,8 +44,10 @@
 
 - [수정·빌드·부팅] 20. v0.3.14 전수 감사 (2026-11-25) — CustomPackManager(앨범 폴더 강/약 신호 판정), CustomMediaPatches(오디오 콜백·BGA 이벤트 격리), Util(CP949 등록 `Lazy`), OfflineStubPatches(CheckTicket 콜백 격리), SaveCustomConfig(예전 config.txt에 새 키 기본값 덧붙이기), InGameOverlayUI·SongTableInjectorPatches(Unity null 비교 축소). 빌드 경고 0/오류 0, 실기 부팅 65/65·`UnlockAllDlc` 덧붙이기 확인
 - [수정·빌드·부팅] 21. v0.3.15 (2026-11-26) — CustomMarathonPatches(`MarathonKeys`: InputSystem 우선·구식 Input 폴백, csproj에 `Unity.InputSystem` 참조), CustomPackManager(BMS 뒤쪽 헤더 메타데이터), NoteVisualPatches(Unity 비교 축소). 시험 곡 폴더 부팅으로 앨범 판정·뒤쪽 헤더 실증, 설정 복구
+- [수정·빌드] 22. v0.3.16 전수 감사·병목 해결·업데이트 내성 강화 (2026-11-26) — SongTableInjectorPatches(MSListBox 자켓 동일 스프라이트 재대입 방지), ChartModel(BmsNote.Order 기반 안정 정렬 Stable Sort), CustomMediaPatches(ClearStage로 VideoPlayer 핸들러 씬 전환 시 Detach), OfflineStubPatches(IsOffline 일원화), Mod.cs(v0.3.16, ClearStage 연동). 빌드 경고 0/오류 0
 
 ## 다음 세션 할 일
+4j. v0.3.16 실기: 선곡 화면 고속 스크롤 성능, 씬 전환 후 BGA 및 마라톤 동작 확인
 4i. v0.3.15 실기: `CustomMarathon=1`로 커스텀 곡 결과창에서 Enter(다음 곡)·Esc(종료), 서든/히든·커스텀 노트 표시
 4h. v0.3.14 실기: ~~앨범 배치 하위 곡 인식~~(v0.3.15 시험 부팅에서 스캔 확인, CUSTOM 탭 표시는 미확인), 선곡 리스트 자켓·키뷰어 색 변화 정상
 4g. v0.3.13 실기: ~~부팅 로그 `DLC 없음으로 처리 (UnlockAllDlc=0)`~~(v0.3.14 부팅에서 확인) → 공식·커스텀 곡 1판씩. `UnlockAllDlc=1` 재시작 시 DLC 곡 열림

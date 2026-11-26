@@ -441,14 +441,23 @@ namespace PIURiseCustom
                     return;
 
                 var pack = CustomPackManager.ResolveBySongId(Util.SongId(content.Song));
-                if (pack == null || string.IsNullOrEmpty(pack.JacketPath) || box._eyecatchImage == null)
+                if (pack == null || string.IsNullOrEmpty(pack.JacketPath))
+                    return;
+
+                var img = box._eyecatchImage;
+                if (img is null || img == null)
                     return;
 
                 var sprite = LoadOrGetJacket(pack.JacketPath);
                 if (sprite != null)
                 {
-                    box._eyecatchImage.sprite = sprite;
-                    box._eyecatchImage.color = Color.white;
+                    // 이미 같은 스프라이트가 적용되어 있으면 프로퍼티 재대입 및 UI 리빌드를 건너뛴다(v0.3.16).
+                    var cur = img.sprite;
+                    if (cur is null || cur.Pointer != sprite.Pointer)
+                    {
+                        img.sprite = sprite;
+                        img.color = Color.white;
+                    }
                 }
             }
             catch { }
