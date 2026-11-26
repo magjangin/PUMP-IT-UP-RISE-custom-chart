@@ -12,7 +12,7 @@ namespace PIURiseCustom
 {
     public class Mod : MelonMod
     {
-        public const string Version = "0.3.15";
+        public const string Version = "0.3.16";
 
         internal static MelonLogger.Instance Log;
         internal static HarmonyLib.Harmony PatchHarmony;
@@ -42,6 +42,7 @@ namespace PIURiseCustom
         {
             InGameOverlayUI.ClearStage();
             GameplayOptionPatches.ClearStage();
+            CustomMediaPatches.ClearStage();
             Log.Msg($"Scene loaded: [{buildIndex}] {sceneName}");
         }
 
@@ -120,6 +121,7 @@ namespace PIURiseCustom
         {
             InGameOverlayUI.ClearStage();
             GameplayOptionPatches.ClearStage();
+            CustomMediaPatches.ClearStage();
             var c = Mod.JudgeCounts;
             Mod.Log.Msg($"MainStage.SaveResult — Perfect {c[0]} / Great {c[1]} / Good {c[2]} / Bad {c[3]} / Miss {c[4]}");
         }
@@ -132,6 +134,7 @@ namespace PIURiseCustom
         {
             InGameOverlayUI.ClearStage();
             GameplayOptionPatches.ClearStage();
+            CustomMediaPatches.ClearStage();
         }
     }
 
@@ -142,6 +145,7 @@ namespace PIURiseCustom
         {
             InGameOverlayUI.ClearStage();
             GameplayOptionPatches.ClearStage();
+            CustomMediaPatches.ClearStage();
         }
     }
 }

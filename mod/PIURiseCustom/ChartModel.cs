@@ -195,6 +195,7 @@ namespace PIURiseCustom
         }
 
         // BMS 노트 하나. beat는 (마디 시작 박 + 마디 안 위치 × 마디 길이)로, 정렬·분할 선택·행 계산에 같은 값을 재사용한다.
+        // Order는 파일 내 출현 순서로, 같은 박에 여러 노트가 올 때 안정 정렬(Stable Sort)을 보장한다(v0.3.16).
         private struct BmsNote
         {
             public int Measure;
@@ -202,6 +203,7 @@ namespace PIURiseCustom
             public double Frac;
             public string Id;
             public double Beat;
+            public int Order;
         }
 
         /// <summary>
@@ -356,8 +358,12 @@ namespace PIURiseCustom
                 orphanHolds++;
             }
 
-            // 박 순서로 처리 (같은 박의 노트 순서는 예전 구현과 같은 List.Sort 비교로 정해진다)
-            rawNotes.Sort((a, b) => a.Beat.CompareTo(b.Beat));
+            // 박 순서로 처리 (같은 박의 노트 순서는 파일 출현 순서 Order를 보존해 안정 정렬 보장, v0.3.16)
+            rawNotes.Sort((a, b) =>
+            {
+                int cmp = a.Beat.CompareTo(b.Beat);
+                return cmp != 0 ? cmp : a.Order.CompareTo(b.Order);
+            });
 
             foreach (var n in rawNotes)
             {
@@ -501,7 +507,7 @@ namespace PIURiseCustom
                 }
                 else
                 {
-                    rawNotes.Add(new BmsNote { Measure = measure, Lane = lane, Frac = frac, Id = data.Substring(at, tokLen) });
+                    rawNotes.Add(new BmsNote { Measure = measure, Lane = lane, Frac = frac, Id = data.Substring(at, tokLen), Order = rawNotes.Count });
                 }
             }
         }

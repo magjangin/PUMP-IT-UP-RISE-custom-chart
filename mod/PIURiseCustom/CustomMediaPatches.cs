@@ -39,6 +39,11 @@ namespace PIURiseCustom
         private static readonly VideoHandlers _previewHandlers = new();
         private static readonly VideoHandlers _bgaHandlers = new();
 
+        internal static void ClearStage()
+        {
+            try { _bgaHandlers.Detach(); } catch { }
+        }
+
         private static string GetCurrentSongId() => Util.CurrentSongId();
 
         // ===== 오디오 캐시 (최근 2개) =====

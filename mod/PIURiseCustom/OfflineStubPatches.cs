@@ -15,6 +15,7 @@ namespace PIURiseCustom
     /// </summary>
     internal static class OfflineStubPatches
     {
+        private static bool IsOffline => SaveCustomConfig.OfflineMode;
         private static readonly object _captureLock = new();
         private static string CaptureFilePath => Path.Combine(MelonEnvironment.GameRootDirectory, "MelonLoader", "net_capture.jsonl");
 
@@ -73,7 +74,7 @@ namespace PIURiseCustom
         {
             try
             {
-                if (!ModConfig.OfflineMode.Value)
+                if (!IsOffline)
                     return;
 
                 var pd = PlayerData.Instance;
@@ -218,7 +219,7 @@ namespace PIURiseCustom
         {
             private static void Prefix(SteamManager __instance)
             {
-                if (!ModConfig.OfflineMode.Value || __instance == null)
+                if (!IsOffline || __instance == null)
                     return;
 
                 try
@@ -239,7 +240,7 @@ namespace PIURiseCustom
         {
             private static bool Prefix(ref bool __result)
             {
-                if (!ModConfig.OfflineMode.Value)
+                if (!IsOffline)
                     return true;
                 __result = false;
                 return false;
@@ -251,7 +252,7 @@ namespace PIURiseCustom
         {
             private static bool Prefix(ref bool __result)
             {
-                if (!ModConfig.OfflineMode.Value)
+                if (!IsOffline)
                     return true;
                 __result = false;
                 return false;
@@ -271,7 +272,7 @@ namespace PIURiseCustom
 
             private static bool Prefix(SteamManager __instance)
             {
-                if (!ModConfig.OfflineMode.Value || __instance == null)
+                if (!IsOffline || __instance == null)
                     return true;
 
                 try
@@ -301,7 +302,7 @@ namespace PIURiseCustom
         {
             private static bool Prefix(uint appID, ref bool __result)
             {
-                if (!ModConfig.OfflineMode.Value)
+                if (!IsOffline)
                     return true;
                 __result = SaveCustomConfig.UnlockAllDlc;
                 return false;
@@ -314,7 +315,7 @@ namespace PIURiseCustom
         {
             private static bool Prefix(Il2CppSystem.Action callback, ref Il2CppSystem.Threading.Tasks.Task __result)
             {
-                if (!ModConfig.OfflineMode.Value)
+                if (!IsOffline)
                     return true;
 
                 try
@@ -352,7 +353,7 @@ namespace PIURiseCustom
         {
             private static bool Prefix()
             {
-                if (!ModConfig.OfflineMode.Value)
+                if (!IsOffline)
                     return true;
                 Mod.Log.Msg("[OfflineStub] StartJwtCoroutine 차단");
                 return false;
@@ -365,7 +366,7 @@ namespace PIURiseCustom
         {
             private static bool Prefix(ref Il2CppSystem.Collections.IEnumerator __result)
             {
-                if (!ModConfig.OfflineMode.Value)
+                if (!IsOffline)
                     return true;
                 __result = null;
                 return false;
@@ -378,7 +379,7 @@ namespace PIURiseCustom
         {
             private static bool Prefix(string content, ref Il2CppSystem.Action<string> callback)
             {
-                if (ModConfig.OfflineMode.Value)
+                if (IsOffline)
                 {
                     string stub = BuildStubResponse(NetCommand.checkTicketAndAuth);
                     Mod.Log.Msg($"[OfflineStub] SendAuth 차단 → {stub}");
@@ -407,7 +408,7 @@ namespace PIURiseCustom
         {
             private static bool Prefix(NetCommand command, string content, ref Il2CppSystem.Action<string> callback)
             {
-                if (ModConfig.OfflineMode.Value)
+                if (IsOffline)
                 {
                     string stub = BuildStubResponse(command);
                     // 같은 명령이 씬 전환마다 반복되므로 명령별 첫 1회만 Msg로 남긴다(v0.3.3, 로그 소음 감소)
@@ -457,7 +458,7 @@ namespace PIURiseCustom
         {
             private static bool Prefix(Il2CppSystem.Action callback)
             {
-                if (!ModConfig.OfflineMode.Value)
+                if (!IsOffline)
                     return true;
 
                 Mod.Log.Msg("[OfflineStub] MaintenanceManager.TitleCheck 우회 → callback 실행");
@@ -471,7 +472,7 @@ namespace PIURiseCustom
         {
             private static bool Prefix(Il2CppSystem.Action callback)
             {
-                if (!ModConfig.OfflineMode.Value)
+                if (!IsOffline)
                     return true;
 
                 Mod.Log.Msg("[OfflineStub] MaintenanceManager.MaintenanceCheck 우회 → callback 실행");
@@ -485,7 +486,7 @@ namespace PIURiseCustom
         {
             private static bool Prefix()
             {
-                if (!ModConfig.OfflineMode.Value)
+                if (!IsOffline)
                     return true;
 
                 Mod.Log.Warning("[OfflineStub] MaintenanceManager.AlramNetworkError() 호출 차단됨");
@@ -512,7 +513,7 @@ namespace PIURiseCustom
         {
             private static bool Prefix(NetworkManager __instance, ref Il2CppSystem.Threading.Tasks.Task __result)
             {
-                if (!ModConfig.OfflineMode.Value)
+                if (!IsOffline)
                     return true;
 
                 try
@@ -552,7 +553,7 @@ namespace PIURiseCustom
             {
                 try
                 {
-                    if (ModConfig.OfflineMode.Value)
+                    if (IsOffline)
                     {
                         Mod.Log.Msg($"[OfflineStub] CommonUtil.SetPlayLogAtServer({songID}) 차단");
                         return false;
