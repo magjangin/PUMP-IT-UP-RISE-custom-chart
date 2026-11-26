@@ -157,22 +157,30 @@ namespace PIURiseCustom
 
         private static void ApplyCustomNoteSprite(SpliteScript note)
         {
-            if (!SaveCustomConfig.CustomNotes || note == null)
+            // 호출부(Init Postfix의 __instance, ApplyVisuals)가 이미 null이 아닌 노트를 넘긴다 → 관리 비교만(v0.3.15, 노트마다·프레임마다 경로)
+            if (!SaveCustomConfig.CustomNotes || note is null)
                 return;
 
             EnsureCustomNoteSpritesLoaded();
             int lane = note.Split % 5;
             if (lane < 0) lane += 5;
-            var customSp = _customLaneSprites[lane];
-            if (customSp == null)
+            var customSp = _customLaneSprites[lane]; // 우리가 만든 캐시(DontUnloadUnusedAsset) → 관리 비교
+            if (customSp is null)
                 return;
 
             // SpliteScript.drawAnim()의 Animator가 스프라이트를 매 프레임 덮어쓰지 않도록 비활성화
-            if (note._anim != null && note._anim.enabled)
-                note._anim.enabled = false;
+            var anim = note._anim;
+            if (anim is not null && anim.enabled)
+                anim.enabled = false;
 
-            if (note._sp != null && note._sp.sprite != customSp)
-                note._sp.sprite = customSp;
+            // 스프라이트 비교는 Unity op_Inequality(IL2CPP 호출) 대신 네이티브 포인터 비교
+            var sp = note._sp;
+            if (sp is not null)
+            {
+                var cur = sp.sprite;
+                if (cur is null || cur.Pointer != customSp.Pointer)
+                    sp.sprite = customSp;
+            }
         }
 
         // CustomNotes: 노트 초기화 시 스프라이트 교체
@@ -299,9 +307,11 @@ namespace PIURiseCustom
             _frameJudgeValid = false;
         }
 
+        // 노트마다·프레임마다 2~N번 불린다. 렌더러는 살아 있는 노트의 자식이라 파괴 감지(Unity == null, IL2CPP 호출) 대신
+        // 관리 비교만 한다(v0.3.15). 파괴된 렌더러면 color 접근이 예외를 내고 ApplyVisuals의 try가 그 노트만 건너뛴다.
         private static void SetSpriteAlphaIfChanged(SpriteRenderer sr, float alpha)
         {
-            if (sr == null) return;
+            if (sr is null) return;
             Color c = sr.color;
             if (MathF.Abs(c.a - alpha) <= 0.002f) return;
             c.a = alpha;

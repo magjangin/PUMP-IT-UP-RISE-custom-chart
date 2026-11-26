@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.15] - 2026-11-26
+
+### 업데이트 내성
+- **마라톤 Enter/Esc를 Unity InputSystem으로 읽음**: 결과창 마라톤 키를 구식 `UnityEngine.Input.GetKeyDown`으로만 읽었습니다. 게임 입력은 InputSystem(`GameInputManager`) 기반이라, 플레이어 설정이 "Input System 전용"이거나 업데이트로 그렇게 바뀌면 호출마다 예외가 나 마라톤이 통째로 멈췄습니다(`[Marathon] 매 프레임 갱신 중 예외`). 이제 `Keyboard.current`(InputSystem)를 먼저 쓰고, 안 되면 구식 Input으로, 둘 다 안 되면 경고 1회 후 키만 끄고 자동 진행 타이머(`CustomMarathonAutoNext`)는 계속 동작합니다. 모드가 `Unity.InputSystem` interop을 참조합니다.
+
+### 버그 수정
+- **BMS 헤더가 파일 뒤쪽에 있으면 목록 제목이 폴더 이름으로 나오던 문제**: v0.3.13부터 차트 파서는 헤더가 데이터 뒤에 있어도 읽지만, 부팅 스캔(목록 제목·아티스트·BPM·레벨)은 앞 32KB만 봤습니다. 앞부분에 `#TITLE`이 없고 파일이 더 크면(8MB 이하) 전체를 한 번 더 훑습니다.
+
+### 성능
+- **노트 비주얼(서든·히든·페이드·커스텀 노트) 켠 상태의 노트당 Unity 비교 축소**: 알파 설정 대상 렌더러와 커스텀 노트 스킨 경로의 Unity null 비교·스프라이트 비교(IL2CPP 호출)를 관리 비교·포인터 비교로 바꿨습니다. 노트마다 매 프레임 2~5회 → 0회.
+
+### 검증
+- Release `-warnaserror` 빌드 경고 0 / 오류 0.
+- 시험용 곡 폴더 실기 부팅(2026-11-26 16:17, 사용자 설정은 백업 후 복구): `hwa/MyAlbum/cover.png` + 하위 곡 2개 → `990002 [MyAlbum] 'Header At End Test'`·`990003 [MyAlbum] 'Album Song B'`로 앨범 곡 2개 인식(v0.3.14 앨범 판정 실증, 예전 방식이면 표지만 있는 곡 1개), 35KB BMS의 끝에 있는 `#TITLE`·`#ARTIST`·`#BPM 150` 읽음 → `[Patch] 65/65` → `사전 JIT 점검 통과 — 메서드 411개`(InputSystem 참조 포함) → `v0.3.15 loaded` → 오프라인 스텁·DLC 처리 정상. 마라톤 키 입력과 노트 비주얼은 미실기.
+
 ## [0.3.14] - 2026-11-25
 
 ### 버그 수정
