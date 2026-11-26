@@ -539,7 +539,25 @@ namespace PIURiseCustom
             {
                 string ext = Path.GetExtension(chartPath)?.ToLowerInvariant();
                 // 부팅 스캔 시 거대한 BMS 전체를 읽지 않고 헤더 앞부분(최대 200줄 / 32KB)만 읽는다
-                foreach (string raw in Util.ReadFirstLinesSmart(chartPath, maxLines: 200, maxBytes: 32768))
+                bool sawTitle = ScanHeaderLines(Util.ReadFirstLinesSmart(chartPath, maxLines: 200, maxBytes: 32768), ext, pack);
+                // BMS 파서는 v0.3.13부터 헤더가 데이터 뒤에 있어도 읽는데, 목록 제목은 앞부분만 봐서 폴더 이름으로 나왔다(v0.3.15).
+                // 앞부분에 #TITLE이 없고 파일이 그보다 크면(8MB 이하) 전체를 한 번 더 훑는다. 앞에서 찾은 값은 뒤에서 찾은 값이 덮는다(파서와 같은 "마지막 값" 규칙).
+                if (!sawTitle && ext != ".ucs")
+                {
+                    long len = new FileInfo(chartPath).Length;
+                    if (len > 32768 && len <= 8L * 1024 * 1024)
+                        ScanHeaderLines(Util.ReadAllLinesSmart(chartPath), ext, pack);
+                }
+            }
+            catch { }
+        }
+
+        // 헤더 줄에서 제목·아티스트·BPM·레벨을 읽는다. #TITLE을 봤으면 true.
+        private static bool ScanHeaderLines(string[] lines, string ext, CustomPack pack)
+        {
+            bool sawTitle = false;
+            {
+                foreach (string raw in lines)
                 {
                     string line = raw.Trim().Replace('\t', ' ');
                     if (ext == ".ucs")
@@ -560,7 +578,7 @@ namespace PIURiseCustom
                         if (line.StartsWith("#TITLE ", StringComparison.OrdinalIgnoreCase))
                         {
                             string t = line.Substring(7).Trim();
-                            if (!string.IsNullOrEmpty(t)) pack.Title = t;
+                            if (!string.IsNullOrEmpty(t)) { pack.Title = t; sawTitle = true; }
                         }
                         else if (line.StartsWith("#ARTIST ", StringComparison.OrdinalIgnoreCase))
                         {
@@ -580,7 +598,7 @@ namespace PIURiseCustom
                     }
                 }
             }
-            catch { }
+            return sawTitle;
         }
 
         private static void ReadInfoTxt(string infoPath, CustomPack pack)

@@ -84,7 +84,7 @@ namespace PIURiseCustom
 
             UpdateBannerUI();
 
-            if (Input.GetKeyDown(KeyCode.Escape))
+            if (MarathonKeys.EscapePressed())
             {
                 Mod.Log?.Msg("[Marathon] Esc 입력 — 마라톤 종료");
                 _playedIds.Clear();
@@ -93,7 +93,7 @@ namespace PIURiseCustom
                 return;
             }
 
-            bool triggerNext = Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter);
+            bool triggerNext = MarathonKeys.EnterPressed();
             if (!triggerNext && SaveCustomConfig.CustomMarathonAutoNext > 0f && _resultShownTime > 0f)
             {
                 if (Time.unscaledTime - _resultShownTime >= SaveCustomConfig.CustomMarathonAutoNext)
@@ -102,6 +102,55 @@ namespace PIURiseCustom
 
             if (triggerNext)
                 StartNextMarathonSong();
+        }
+
+        /// <summary>
+        /// 결과창 Enter/Esc 읽기 (v0.3.15). 게임 입력은 Unity InputSystem(GameInputManager)이라, 플레이어 설정이 "Input System 전용"이면
+        /// 구식 UnityEngine.Input은 호출할 때마다 InvalidOperationException을 던진다(예전엔 Mod.OnUpdate의 WarnOnce에 걸려 마라톤이 통째로 멈춤).
+        /// 그래서 InputSystem의 Keyboard.current를 먼저 쓰고, 그게 안 되면(키보드 없음·API 변경) 구식 Input으로 내려간다.
+        /// 둘 다 실패하면 경고 1회 후 키 입력만 끄고 자동 진행 타이머(CustomMarathonAutoNext)는 계속 동작한다.
+        /// </summary>
+        private static class MarathonKeys
+        {
+            private static bool _inputSystemFailed, _legacyFailed;
+
+            internal static bool EscapePressed() => Read(escape: true);
+            internal static bool EnterPressed() => Read(escape: false);
+
+            private static bool Read(bool escape)
+            {
+                if (!_inputSystemFailed)
+                {
+                    try
+                    {
+                        var kb = UnityEngine.InputSystem.Keyboard.current;
+                        if (kb is not null)
+                            return escape
+                                ? kb.escapeKey.wasPressedThisFrame
+                                : kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame;
+                    }
+                    catch (Exception ex)
+                    {
+                        _inputSystemFailed = true;
+                        Mod.Log?.Warning($"[Marathon] InputSystem 키보드 읽기 실패 → 구식 Input으로 전환: {ex.GetType().Name}: {ex.Message}");
+                    }
+                }
+
+                if (_legacyFailed)
+                    return false;
+                try
+                {
+                    return escape
+                        ? Input.GetKeyDown(KeyCode.Escape)
+                        : Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter);
+                }
+                catch (Exception ex)
+                {
+                    _legacyFailed = true;
+                    Mod.Log?.Warning($"[Marathon] 키 입력을 읽을 수 없어 Enter/Esc를 끕니다(자동 진행 타이머는 동작): {ex.GetType().Name}: {ex.Message}");
+                    return false;
+                }
+            }
         }
 
         private static void StartNextMarathonSong()
