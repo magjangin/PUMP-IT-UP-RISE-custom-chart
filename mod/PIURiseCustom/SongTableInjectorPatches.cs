@@ -386,6 +386,21 @@ namespace PIURiseCustom
             }
         }
 
+        /// <summary>
+        /// Image.sprite에 새 스프라이트를 대입하되, 이미 동일한 스프라이트가 적용되어 있으면
+        /// 네이티브 프로퍼티 세터 호출과 내부 UI 리빌드를 건너뛴다(v0.3.17).
+        /// </summary>
+        internal static void SetSpriteIfChanged(UnityEngine.UI.Image img, Sprite sprite)
+        {
+            if (img is null || sprite is null) return;
+            var cur = img.sprite;
+            if (cur is null || cur.Pointer != sprite.Pointer)
+            {
+                img.sprite = sprite;
+                img.color = Color.white;
+            }
+        }
+
         [HarmonyPatch(typeof(SongDataCell), nameof(SongDataCell.Init), typeof(string), typeof(byte), typeof(int))]
         internal static class SongDataCell_Init_Patch
         {
@@ -393,16 +408,14 @@ namespace PIURiseCustom
             {
                 try
                 {
-                    // 공식 곡은 Unity 객체 비교(IL2CPP 호출)보다 먼저 관리 사전 조회로 걸러낸다
-                    if (!ModConfig.CustomEnabled.Value)
+                    if (!ModConfig.CustomEnabled.Value || __instance is null)
                         return;
                     var pack = CustomPackManager.ResolveBySongId(songID);
-                    if (pack == null || string.IsNullOrEmpty(pack.JacketPath) || __instance == null || __instance._eyeCatch == null)
+                    if (pack == null || string.IsNullOrEmpty(pack.JacketPath) || __instance._eyeCatch == null)
                         return;
 
                     var sprite = LoadOrGetJacket(pack.JacketPath);
-                    if (sprite != null)
-                        __instance._eyeCatch.sprite = sprite;
+                    SetSpriteIfChanged(__instance._eyeCatch, sprite);
                 }
                 catch { }
             }
@@ -449,16 +462,7 @@ namespace PIURiseCustom
                     return;
 
                 var sprite = LoadOrGetJacket(pack.JacketPath);
-                if (sprite != null)
-                {
-                    // 이미 같은 스프라이트가 적용되어 있으면 프로퍼티 재대입 및 UI 리빌드를 건너뛴다(v0.3.16).
-                    var cur = img.sprite;
-                    if (cur is null || cur.Pointer != sprite.Pointer)
-                    {
-                        img.sprite = sprite;
-                        img.color = Color.white;
-                    }
-                }
+                SetSpriteIfChanged(img, sprite);
             }
             catch { }
         }
@@ -601,8 +605,7 @@ namespace PIURiseCustom
                     var sprite = LoadOrGetJacket(loadingImg);
                     if (sprite != null)
                     {
-                        __instance._bgImage.sprite = sprite;
-                        __instance._bgImage.color = Color.white;
+                        SetSpriteIfChanged(__instance._bgImage, sprite);
                         pd.Curtain = sprite;
                     }
                 }
@@ -691,11 +694,7 @@ namespace PIURiseCustom
                         return;
 
                     var sprite = LoadOrGetJacket(pack.JacketPath);
-                    if (sprite != null)
-                    {
-                        __instance._cover.sprite = sprite;
-                        __instance._cover.color = Color.white;
-                    }
+                    SetSpriteIfChanged(__instance._cover, sprite);
                 }
                 catch { }
             }
@@ -717,11 +716,7 @@ namespace PIURiseCustom
                         return;
 
                     var sprite = LoadOrGetJacket(loadingImg);
-                    if (sprite != null)
-                    {
-                        __instance._bgImage.sprite = sprite;
-                        __instance._bgImage.color = Color.white;
-                    }
+                    SetSpriteIfChanged(__instance._bgImage, sprite);
                 }
                 catch { }
             }
@@ -772,11 +767,7 @@ namespace PIURiseCustom
                     if (__instance._eyeCatch != null && !string.IsNullOrEmpty(pack.JacketPath))
                     {
                         var sprite = LoadOrGetJacket(pack.JacketPath);
-                        if (sprite != null)
-                        {
-                            __instance._eyeCatch.sprite = sprite;
-                            __instance._eyeCatch.color = Color.white;
-                        }
+                        SetSpriteIfChanged(__instance._eyeCatch, sprite);
                     }
                 }
                 catch (Exception ex)
@@ -802,11 +793,7 @@ namespace PIURiseCustom
                         return;
 
                     var sprite = LoadOrGetJacket(loadingImg);
-                    if (sprite != null)
-                    {
-                        __instance._bgImage.sprite = sprite;
-                        __instance._bgImage.color = Color.white;
-                    }
+                    SetSpriteIfChanged(__instance._bgImage, sprite);
                 }
                 catch { }
             }

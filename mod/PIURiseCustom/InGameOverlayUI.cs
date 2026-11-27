@@ -331,7 +331,7 @@ namespace PIURiseCustom
 
             // 일시정지 나가기 등으로 MainStage가 비활성/파괴된 경우 선곡창에 오버레이가 남지 않도록 즉시 정리
             var stage = MainStage.Instance;
-            if (stage == null || !stage.isActiveAndEnabled)
+            if (stage is null || stage == null || !stage.isActiveAndEnabled)
             {
                 ClearStage();
                 return;
@@ -339,7 +339,7 @@ namespace PIURiseCustom
 
             // 로딩 커튼이 내려가고 실제 곡이 시작된 뒤에만 판정바/키뷰어 표시
             var sc = StageController.Instance;
-            if (sc == null || !sc.GameStarted)
+            if (sc is null || sc == null || !sc.GameStarted)
                 return;
 
             try

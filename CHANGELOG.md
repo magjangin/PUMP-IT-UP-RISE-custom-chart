@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.17] - 2026-11-27
+
+### 성능
+- **마라톤 배너 폰트 캐싱 (`FindObjectOfType` 씬 전수 검색 제거)**: 마라톤 배너 생성 시 씬의 모든 오브젝트를 검색하던 `UnityEngine.Object.FindObjectOfType<TextMeshProUGUI>()` 호출을 최초 1회만 수행하도록 `_cachedBannerFont`에 캐시하여 배너 생성 시의 프리징을 방지했습니다.
+- **전체 UI 자켓/커튼 스프라이트 재대입 방지 확대 (`SetSpriteIfChanged`)**: `MSListBox`에 적용했던 동일 스프라이트 재대입 방지 패턴(`cur.Pointer != sprite.Pointer`일 때만 대입)을 `SongDataCell`, `IngameSongInfoUI`, `ResultDefaultGameInfo`, `BGAPlayerLoader`, `MultiStageCreateRoomPopup` 등 모든 UI 자켓 적용 지점에 일괄 적용하여 불필요한 네이티브 호출 및 UI 그래픽 리빌드를 최소화했습니다.
+- **오버레이 매 프레임 관리 null 비교 선행**: `InGameOverlayUI.UpdateOverlay`에서 `MainStage.Instance` 및 `StageController.Instance`에 대해 관리 `is null` 체크를 먼저 수행해, 씬 전환 및 스테이지 종료 시 매 프레임 불필요한 Unity `== null` 연산자 호출(IL2CPP interop)을 제거했습니다.
+- **마라톤 잔여 곡 O(1) 빠른 판정**: `HasRemainingCustomSongs`에서 `_playedIds.Count >= songs.Count` 비교를 선행하여 전체 카탈로그 순회 없이 O(1)로 조기 반환합니다.
+
+### 안정성 및 자원 관리
+- **파싱 실패 Task 캐시 즉시 제거**: `CustomChartParsers`에서 차트 파싱 중 실패한 작업(`task.IsFaulted`)이 캐시에 방치되지 않도록 즉시 제거하여 캐시 슬롯 낭비를 방지하고 다음 시도 시 재파싱이 정상 동작하도록 보장했습니다.
+- **차트 파서 수치 안정성 및 행 상한 안전장치**: UCS/BMS 분할 계산 시 0으로 나누기(DivideByZero/NaN)를 방어하고, 손상된 BMS 파일의 비정상적인 마디 번호로 인한 메모리 폭주를 막기 위해 최대 200,000행 상한 안전장치를 추가했습니다.
+
+### 검증
+- Release `-warnaserror` 빌드 경고 0 / 오류 0 (스켈레톤 포함).
+
 ## [0.3.16] - 2026-11-26
 
 ### 성능

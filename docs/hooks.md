@@ -42,9 +42,9 @@ JUDGE 열거형: 0 Perfect, 1 Great, 2 Good, 3 Bad, 4 Miss (src_dummy\PIUMobileS
 | `SteamManager.CheckAllDLCStatus()` | 0x7DB090 | 시그니처만 | DLC 소유 확인 |
 | `SteamManager.IsDLCInstalled(uint appID)` | 0x7DBA90 | 시그니처만 | DLC 설치 확인 |
 
-## 4. PIURiseCustom v0.3.16 실제 패치 목록 (속성 기반 65개 + 동적 2개)
+## 4. PIURiseCustom v0.3.17 실제 패치 목록 (속성 기반 65개 + 동적 2개)
 
-v0.3.2는 63개(2026-11-23 실기 부팅 63/63), v0.3.3은 61개, v0.3.4도 61개, v0.3.5는 로그 전용 `PlayBase.GetScoreAndAccuracy` 훅(값 형식 반환 → 박싱 크래시 위험, 호출 0회)을 빼서 60개, v0.3.9는 Steam 초기화·DLC 소유 처리 훅 5개를 더해 65개(v0.3.16까지 같음). v0.3.3부터 노트 비주얼 `LateUpdate` 훅 2개는 `SafePatcher` 집계에서 빠지고, 비주얼 기능이 하나라도 켜졌을 때만 `MainStage.Start`에서 붙는다(`NoteVisualPatches.LateUpdateHooks.Sync`).
+v0.3.2는 63개(2026-11-23 실기 부팅 63/63), v0.3.3은 61개, v0.3.4도 61개, v0.3.5는 로그 전용 `PlayBase.GetScoreAndAccuracy` 훅(값 형식 반환 → 박싱 크래시 위험, 호출 0회)을 빼서 60개, v0.3.9는 Steam 초기화·DLC 소유 처리 훅 5개를 더해 65개(v0.3.17까지 같음). v0.3.3부터 노트 비주얼 `LateUpdate` 훅 2개는 `SafePatcher` 집계에서 빠지고, 비주얼 기능이 하나라도 켜졌을 때만 `MainStage.Start`에서 붙는다(`NoteVisualPatches.LateUpdateHooks.Sync`).
 
 RVA 대신 **이름**으로 걸린다. 게임 업데이트 후 `[Patch] … 실패` 로그에 나온 클래스 이름을 이 표에서 찾아 영향 기능을 판단한다.
 "관문"은 Prefix가 원본 실행 여부를 좌우하는 지점 — 여기서 실패·예외가 나면 해당 화면 자체가 깨질 수 있다.
