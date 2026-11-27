@@ -327,7 +327,7 @@ namespace PIURiseCustom
             var chart = new ParsedChart { LaneCount = laneCount };
             int split = ChooseBeatSplit(chart, rawNotes, bpmChanges, measureStartBeat);
             double totalBeats = measureStartBeat[maxMeasure + 1];
-            int totalRows = (int)Math.Ceiling(totalBeats * split) + split * 4;
+            int totalRows = Math.Max(1, (int)Math.Ceiling(totalBeats * split) + split * 4);
             const int MaxBmsRows = 200000;
             if (totalRows > MaxBmsRows)
             {

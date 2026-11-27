@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.18] - 2026-11-27
+
+### 성능 및 메모리 최적화
+- **텍스트 디코딩 인코딩 인스턴스 정적 싱글톤 캐싱 (`Util.cs`)**: 차트 파싱(BMS/UCS), `info.txt`, `song_ids.txt` 등 텍스트 파일 디코딩 시 UTF-8 폴백으로 호출되던 `GetCodePage(949)` 및 `GetCodePage(932)`에 대해 `Encoding.GetEncoding`의 반복 할당을 방지하고, 스레드 세이프 `Lazy<Encoding>` 싱글톤 인스턴스(`_cp949`, `_cp932`)를 재사용하도록 최적화하여 GC 압력을 대폭 줄였습니다.
+- **노트 비주얼 스테이지 종료 시 딕셔너리 메모리 회수 (`TrimExcess`)**: 고난도 곡에서 수천 개의 노트 오브젝트가 등록되었던 `_noteBase`와 `_noteChaosMult` 딕셔너리에 대해 새 스테이지 시작 시 `TrimExcess()`를 호출하여 내부 버킷 크기를 반환하도록 개선했습니다.
+- **BGA 파일 URL 캐시 상한 안전장치 (`CustomMediaPatches.cs`)**: BGA 파일 경로 URL 캐시(`_fileUrlCache`)에 128개 상한 제한을 적용하여 장시간 연속 플레이 시 메모리 누수를 원천 차단했습니다.
+
+### 수치 안정성 및 예외 방어
+- **Il2Cpp Step 구성 시 행 간격 0으로 나누기 방어 (`CustomChartParsers.cs`)**: `BuildStep`에서 행별 시간 간격(`msPerLine = 60000f / Math.Max(0.001f, (b.Split * b.Bpm))`) 계산 시 비정상적인 BPM이나 분할값으로 인한 DivideByZero/NaN 발생을 원천 차단했습니다.
+- **BMS 파서 총 행 수 최소값 보장 (`ChartModel.cs`)**: BMS 파싱 시 `totalRows = Math.Max(1, ...)`로 최소 1행을 보장하여, 손상된 빈 차트 파일에서도 `Math.Clamp`의 `min > max` 예외가 발생하지 않도록 방어했습니다.
+
+### 검증
+- Release `-warnaserror` 빌드 경고 0 / 오류 0 (스켈레톤 포함).
+
 ## [0.3.17] - 2026-11-27
 
 ### 성능

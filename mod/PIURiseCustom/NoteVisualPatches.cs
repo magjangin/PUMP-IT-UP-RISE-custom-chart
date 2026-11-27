@@ -46,6 +46,8 @@ namespace PIURiseCustom
         {
             _noteBase.Clear();
             _noteChaosMult.Clear();
+            _noteBase.TrimExcess();
+            _noteChaosMult.TrimExcess();
             _laneChaosInitialized = false;
             LastJudgeScreenY = -1f;
 

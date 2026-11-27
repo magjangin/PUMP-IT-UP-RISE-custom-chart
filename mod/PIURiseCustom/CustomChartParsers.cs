@@ -166,7 +166,7 @@ namespace PIURiseCustom
             for (int bi = 0; bi < blocks.Count; bi++)
             {
                 var b = blocks[bi];
-                float msPerLine = 60000f / (b.Split * b.Bpm);
+                float msPerLine = 60000f / Math.Max(0.001f, (b.Split * b.Bpm));
                 float startMs = curTimeMs + b.DelayMs;
 
                 var div = new Div

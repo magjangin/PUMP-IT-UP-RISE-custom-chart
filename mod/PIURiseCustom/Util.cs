@@ -42,6 +42,18 @@ namespace PIURiseCustom
             catch { return false; }
         }, System.Threading.LazyThreadSafetyMode.ExecutionAndPublication);
 
+        private static readonly Lazy<Encoding> _cp949 = new(() =>
+        {
+            _ = _codePagesRegistered.Value;
+            return Encoding.GetEncoding(949, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
+        }, System.Threading.LazyThreadSafetyMode.ExecutionAndPublication);
+
+        private static readonly Lazy<Encoding> _cp932 = new(() =>
+        {
+            _ = _codePagesRegistered.Value;
+            return Encoding.GetEncoding(932, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
+        }, System.Threading.LazyThreadSafetyMode.ExecutionAndPublication);
+
         public static string[] ReadAllLinesSmart(string path)
         {
             byte[] bytes = File.ReadAllBytes(path);
@@ -111,6 +123,8 @@ namespace PIURiseCustom
 
         private static Encoding GetCodePage(int codePage)
         {
+            if (codePage == 949) return _cp949.Value;
+            if (codePage == 932) return _cp932.Value;
             _ = _codePagesRegistered.Value;
             // 엄격 디코더: CP949로 해석 불가능한 바이트가 있으면 다음 후보(Shift-JIS)로 넘어간다
             return Encoding.GetEncoding(codePage, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
