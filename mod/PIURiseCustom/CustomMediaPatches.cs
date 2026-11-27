@@ -158,6 +158,8 @@ namespace PIURiseCustom
         {
             if (!_fileUrlCache.TryGetValue(path, out string url))
             {
+                if (_fileUrlCache.Count >= 128)
+                    _fileUrlCache.Clear();
                 url = new Uri(Path.GetFullPath(path)).AbsoluteUri;
                 _fileUrlCache[path] = url;
             }
