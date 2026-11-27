@@ -26,6 +26,7 @@ namespace PIURiseCustom
         // uGUI 마라톤 배너 (IL2CPP에서 스트립된 OnGUI 미사용)
         private static GameObject _bannerCanvasObj;
         private static TextMeshProUGUI _bannerTmp;
+        private static TMP_FontAsset _cachedBannerFont;
         private static string _lastBannerText;
 
         public static void OnCustomSongStarted(string songId)
@@ -50,7 +51,10 @@ namespace PIURiseCustom
 
         private static bool HasRemainingCustomSongs()
         {
-            foreach (var p in CustomPackManager.CatalogSongs)
+            var songs = CustomPackManager.CatalogSongs;
+            if (_playedIds.Count >= songs.Count)
+                return false;
+            foreach (var p in songs)
             {
                 if (!_playedIds.Contains(p.SongId))
                     return true;
@@ -246,9 +250,20 @@ namespace PIURiseCustom
                     _bannerTmp.fontSize = 22f;
                     _bannerTmp.color = Color.white;
                     _bannerTmp.raycastTarget = false;
-                    var existingTmp = UnityEngine.Object.FindObjectOfType<TextMeshProUGUI>();
-                    if (existingTmp != null && existingTmp.font != null)
-                        _bannerTmp.font = existingTmp.font;
+                    if (_cachedBannerFont is not null && _cachedBannerFont.Pointer != IntPtr.Zero)
+                    {
+                        _bannerTmp.font = _cachedBannerFont;
+                    }
+                    else
+                    {
+                        // 씬 전체 순회(FindObjectOfType)는 최초 1회만 수행하고 폰트를 캐시한다(v0.3.17)
+                        var existingTmp = UnityEngine.Object.FindObjectOfType<TextMeshProUGUI>();
+                        if (existingTmp != null && existingTmp.font != null)
+                        {
+                            _cachedBannerFont = existingTmp.font;
+                            _bannerTmp.font = _cachedBannerFont;
+                        }
+                    }
                     var txtRt = _bannerTmp.rectTransform;
                     txtRt.anchorMin = Vector2.zero;
                     txtRt.anchorMax = Vector2.one;

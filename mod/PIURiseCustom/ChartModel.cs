@@ -68,7 +68,8 @@ namespace PIURiseCustom
             double totalMs = 0.0;
             foreach (var b in blocks)
             {
-                double msPerLine = 60000.0 / (b.Split * b.Bpm);
+                double denom = Math.Max(0.001, (double)b.Split * b.Bpm);
+                double msPerLine = 60000.0 / denom;
                 totalMs += b.DelayMs + b.Rows.Count * msPerLine;
             }
 
@@ -77,7 +78,8 @@ namespace PIURiseCustom
                 return;
 
             var last = blocks[blocks.Count - 1];
-            double lastMsPerLine = 60000.0 / (last.Split * last.Bpm);
+            double lastDenom = Math.Max(0.001, (double)last.Split * last.Bpm);
+            double lastMsPerLine = 60000.0 / lastDenom;
             int extraRows = (int)Math.Ceiling((targetMs - totalMs) / lastMsPerLine);
             if (extraRows <= 0)
                 return;
@@ -326,6 +328,12 @@ namespace PIURiseCustom
             int split = ChooseBeatSplit(chart, rawNotes, bpmChanges, measureStartBeat);
             double totalBeats = measureStartBeat[maxMeasure + 1];
             int totalRows = (int)Math.Ceiling(totalBeats * split) + split * 4;
+            const int MaxBmsRows = 200000;
+            if (totalRows > MaxBmsRows)
+            {
+                chart.Warn($"[BMS Parser] '{fileName}' 행 수({totalRows})가 비정상적으로 커 상한 {MaxBmsRows}행으로 제한");
+                totalRows = MaxBmsRows;
+            }
 
             // 그리드: 행마다 레인 수만큼의 char 배열 (마지막에 그대로 행 문자열로 만든다)
             char[] grid = new char[totalRows * laneCount];

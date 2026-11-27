@@ -61,10 +61,14 @@ namespace PIURiseCustom
             Task<ParsedChart> task;
             lock (_cacheLock)
             {
-                if (_cache.TryGetValue(key, out task) && !task.IsFaulted && !task.IsCanceled)
+                if (_cache.TryGetValue(key, out task))
                 {
-                    reused = true;
-                    return task;
+                    if (!task.IsFaulted && !task.IsCanceled)
+                    {
+                        reused = true;
+                        return task;
+                    }
+                    _cache.Remove(key); // 실패한 파싱 작업은 즉시 캐시에서 비워 재시도 허용(v0.3.17)
                 }
                 if (_cache.Count >= MaxCachedCharts)
                     _cache.Clear();
