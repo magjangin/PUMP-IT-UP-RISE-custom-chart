@@ -47,6 +47,7 @@
 - [수정·빌드] 22. v0.3.16 전수 감사·병목 해결·업데이트 내성 강화 (2026-11-26) — SongTableInjectorPatches(MSListBox 자켓 동일 스프라이트 재대입 방지), ChartModel(BmsNote.Order 기반 안정 정렬 Stable Sort), CustomMediaPatches(ClearStage로 VideoPlayer 핸들러 씬 전환 시 Detach), OfflineStubPatches(IsOffline 일원화), Mod.cs(v0.3.16, ClearStage 연동). 빌드 경고 0/오류 0
 - [수정·빌드] 23. v0.3.17 심층 성능 최적화·자원 관리·수치 안정성 (2026-11-27) — CustomMarathonPatches(배너 폰트 캐시로 FindObjectOfType 제거, O(1) 잔여 곡 판정), SongTableInjectorPatches(전체 UI SetSpriteIfChanged 확대 적용), CustomChartParsers(결함 Task 즉시 캐시 제거), InGameOverlayUI(매 프레임 관리 null 비교 선행), ChartModel(0으로 나누기 방어 및 최대 행 상한 클램프). 빌드 경고 0/오류 0
 - [수정·빌드] 24. v0.3.18 성능 최적화·메모리 회수·수치 안정성 강화 (2026-11-27) — Util(CP949/CP932 인코딩 인스턴스 Lazy 싱글톤 캐싱으로 디코딩 GC 할당 제거), NoteVisualPatches(ResetForNewStage에서 TrimExcess로 대형 딕셔너리 메모리 반환), CustomMediaPatches(_fileUrlCache 128개 상한 제한), CustomChartParsers(msPerLine 분모 0 방어), ChartModel(BMS totalRows 최소 1행 보장). 빌드 경고 0/오류 0
+- [수정·빌드] 25. v0.3.19 스레드 안전성·수치 한계 가드·소멸 객체 방어 (2026-11-28) — SongTableInjectorPatches(자켓 프리페치 lock 도입으로 스레드 경합 차단, SetSpriteIfChanged IntPtr.Zero 방어), ChartModel(BMS 마디 0..999 및 채널 02 배율 클램프), CustomMarathonPatches(PickNextRandomSong 풀 할당 최적화 및 전환 실패 시 배너 정리), InGameOverlayUI(틱 이미지 소멸 객체 포인터 검사). 빌드 경고 0/오류 0
 
 ## 다음 세션 할 일
 4k. v0.3.17 실기: 마라톤 배너 생성 반응성, 전 UI 자켓 교체 안정성, 고속 선곡 스크롤 성능 확인

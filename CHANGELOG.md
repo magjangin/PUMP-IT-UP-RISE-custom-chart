@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.19] - 2026-11-28
+
+### 안정성 및 스레드 안전성 강화
+- **자켓 프리페치 스레드 경합 원천 차단 (`SongTableInjectorPatches.cs`)**: 자켓 백그라운드 디코딩 큐(`_decodePending`, `_decodePendingBytes`)에 `lock (_decodeLock)`을 도입하여, 메인 스레드와 백그라운드 프리페치 태스크 간의 잠재적 레이스 컨디션을 완전히 제거했습니다.
+- **BMS 파서 마디 번호 및 배율 한계 가드 (`ChartModel.cs`)**: `ParseBmsDataLine`에서 마디 번호 음수/초과(`measure < 0 || measure > 999`) 방어 및 채널 02 마디 길이 배율에 대해 유효 수치 검증(`double.IsFinite`)과 `Math.Clamp(ratio, 0.001, 64.0)`를 적용하여, 손상된 차트 파일로 인한 인덱스 초과 예외 및 시간 축 폭주를 원천 방어했습니다.
+- **파괴된 Unity 스프라이트 포인터 비교 방어 (`SetSpriteIfChanged`)**: `cur.Pointer == IntPtr.Zero` 검사를 추가하여 씬 전환 중 이미 소멸된 Image 스프라이트 객체에 대한 포인터 비교 오작동을 차단했습니다.
+- **오버레이 판정바 틱 소멸 객체 방어 (`InGameOverlayUI.cs`)**: 틱 페이드 갱신 시 `img.Pointer == IntPtr.Zero` 검사를 보강하여 씬 전환 중 파괴된 Image 네이티브 객체 접근을 방지했습니다.
+
+### 성능 최적화
+- **마라톤 랜덤 선곡 리스트 할당 최적화 (`CustomMarathonPatches.cs`)**: `PickNextRandomSong`에서 후보 곡 리스트(`pool`) 생성 시 전체 카탈로그 곡 수를 초기 용량 힌트로 전달하여 리스트 내부 재할당을 방지하고, 곡 전환 실패 시 배너 및 상태를 즉시 정리(`DestroyBanner()`)하여 무한 재시도 결함을 방어했습니다.
+
+### 검증
+- Release `-warnaserror` 빌드 경고 0 / 오류 0 (스켈레톤 포함).
+
 ## [0.3.18] - 2026-11-27
 
 ### 성능 및 메모리 최적화

@@ -215,8 +215,9 @@ namespace PIURiseCustom
         // 같은 파일을 관리 디코더로 푼 시간). 선곡 리스트가 처음 그려질 때·곡 시작 때 그만큼 프레임이 멈췄다.
         // PNG는 PngDecoder로 스레드 풀에서 RGBA까지 풀어 두고, 메인 스레드는 LoadRawTextureData(복사)+Apply만 한다.
         // 디코딩 결과는 한 번 쓰면 버린다(이후는 _jacketCache의 Sprite). PNG가 아니거나 디코더가 거부하면 예전 LoadImage 경로.
-        // 모든 진입점(Prefetch*/LoadOrGetJacket)은 메인 스레드에서만 불린다 → _decodePending에 잠금이 필요 없다.
+        // 모든 진입점(Prefetch*/LoadOrGetJacket)의 백그라운드 태스크 및 스레드 풀 완료 경합을 방어하기 위해 _decodeLock을 둔다(v0.3.19).
         private const long JacketPrefetchBudgetBytes = 96L * 1024 * 1024; // 아직 안 쓴 디코딩 결과(RGBA)의 합 상한
+        private static readonly object _decodeLock = new();
         private static readonly Dictionary<string, (System.Threading.Tasks.Task<DecodedImage> Task, long Bytes)> _decodePending =
             new(StringComparer.OrdinalIgnoreCase);
         private static long _decodePendingBytes;
@@ -251,21 +252,27 @@ namespace PIURiseCustom
             {
                 if (string.IsNullOrEmpty(path) || !path.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
                     return false;
-                if (_decodePending.ContainsKey(path) || _jacketFailed.Contains(path) || _jacketCache.ContainsKey(path))
-                    return false;
+                lock (_decodeLock)
+                {
+                    if (_decodePending.ContainsKey(path) || _jacketFailed.Contains(path) || _jacketCache.ContainsKey(path))
+                        return false;
+                }
                 if (!CustomPackManager.TryReadImageDimensions(path, out int w, out int h) || w <= 0 || h <= 0)
                     return false;
                 long bytes = (long)w * h * 4;
-                if (_decodePendingBytes + bytes > JacketPrefetchBudgetBytes)
-                    return false; // 상한을 넘는 것은 쓸 때 예전 방식으로 푼다
-
-                var task = System.Threading.Tasks.Task.Run(() =>
+                lock (_decodeLock)
                 {
-                    try { return PngDecoder.TryDecode(File.ReadAllBytes(path)); }
-                    catch { return null; }
-                });
-                _decodePending[path] = (task, bytes);
-                _decodePendingBytes += bytes;
+                    if (_decodePendingBytes + bytes > JacketPrefetchBudgetBytes)
+                        return false; // 상한을 넘는 것은 쓸 때 예전 방식으로 푼다
+
+                    var task = System.Threading.Tasks.Task.Run(() =>
+                    {
+                        try { return PngDecoder.TryDecode(File.ReadAllBytes(path)); }
+                        catch { return null; }
+                    });
+                    _decodePending[path] = (task, bytes);
+                    _decodePendingBytes += bytes;
+                }
                 return true;
             }
             catch
@@ -276,13 +283,16 @@ namespace PIURiseCustom
 
         private static System.Threading.Tasks.Task<DecodedImage> TakePending(string path)
         {
-            if (!_decodePending.TryGetValue(path, out var e))
-                return null;
-            _decodePending.Remove(path);
-            _decodePendingBytes -= e.Bytes;
-            if (string.Equals(_hoverPrefetchPath, path, StringComparison.OrdinalIgnoreCase))
-                _hoverPrefetchPath = null;
-            return e.Task;
+            lock (_decodeLock)
+            {
+                if (!_decodePending.TryGetValue(path, out var e))
+                    return null;
+                _decodePending.Remove(path);
+                _decodePendingBytes -= e.Bytes;
+                if (string.Equals(_hoverPrefetchPath, path, StringComparison.OrdinalIgnoreCase))
+                    _hoverPrefetchPath = null;
+                return e.Task;
+            }
         }
 
         private static Texture2D TextureFromDecoded(DecodedImage img)
@@ -394,7 +404,7 @@ namespace PIURiseCustom
         {
             if (img is null || sprite is null) return;
             var cur = img.sprite;
-            if (cur is null || cur.Pointer != sprite.Pointer)
+            if (cur is null || cur.Pointer == IntPtr.Zero || cur.Pointer != sprite.Pointer)
             {
                 img.sprite = sprite;
                 img.color = Color.white;

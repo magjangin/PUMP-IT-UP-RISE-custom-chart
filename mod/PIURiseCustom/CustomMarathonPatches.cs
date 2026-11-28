@@ -64,8 +64,9 @@ namespace PIURiseCustom
 
         private static CustomPack PickNextRandomSong()
         {
-            var pool = new List<CustomPack>();
-            foreach (var p in CustomPackManager.CatalogSongs)
+            var songs = CustomPackManager.CatalogSongs;
+            var pool = new List<CustomPack>(songs.Count);
+            foreach (var p in songs)
             {
                 if (!_playedIds.Contains(p.SongId))
                     pool.Add(p);
@@ -196,6 +197,8 @@ namespace PIURiseCustom
             {
                 Mod.Log?.Warning($"[Marathon] 다음 곡 전환 실패: {ex.Message}");
                 _transitionTriggered = false;
+                _activeResultUI = null;
+                DestroyBanner();
             }
         }
 
