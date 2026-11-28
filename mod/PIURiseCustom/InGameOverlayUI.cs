@@ -355,7 +355,7 @@ namespace PIURiseCustom
                     {
                         if (!_ticks[i].Active) continue;
                         var img = _ticks[i].Img;
-                        if (img is null) continue;
+                        if (img is null || img.Pointer == IntPtr.Zero) continue;
                         float age = now - _ticks[i].Time;
                         if (age > 2.5f)
                         {

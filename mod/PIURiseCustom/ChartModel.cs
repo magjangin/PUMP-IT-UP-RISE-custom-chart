@@ -462,7 +462,7 @@ namespace PIURiseCustom
             string line, ref int maxMeasure, Dictionary<int, double> measureLen, Dictionary<string, double> extBpm,
             int wavKeyLen, int extBpmKeyLen, List<(int measure, double frac, double bpm)> bpmChanges, List<BmsNote> rawNotes)
         {
-            if (!int.TryParse(line.AsSpan(1, 3), NumberStyles.Integer, CultureInfo.InvariantCulture, out int measure))
+            if (!int.TryParse(line.AsSpan(1, 3), NumberStyles.Integer, CultureInfo.InvariantCulture, out int measure) || measure < 0 || measure > 999)
                 return;
 
             char c0 = char.ToUpperInvariant(line[4]);
@@ -476,8 +476,8 @@ namespace PIURiseCustom
             // 마디 길이 배율 (채널 02)
             if (c0 == '0' && c1 == '2')
             {
-                if (double.TryParse(data, NumberStyles.Float, CultureInfo.InvariantCulture, out double ratio) && ratio > 0)
-                    measureLen[measure] = ratio;
+                if (double.TryParse(data, NumberStyles.Float, CultureInfo.InvariantCulture, out double ratio) && double.IsFinite(ratio) && ratio > 0)
+                    measureLen[measure] = Math.Clamp(ratio, 0.001, 64.0);
                 return;
             }
 
